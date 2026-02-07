@@ -52,8 +52,10 @@ export async function jsonDAGWorkflow(input) {
   const state = {
     processType,
     status: 'running',
+    statusMessage: null,
     route,
     nodes: {},
+    stepParams: {},
     approvals: {},
     events: {},
     vars,
@@ -61,6 +63,11 @@ export async function jsonDAGWorkflow(input) {
     startedAt: new Date().toISOString(),
     completedAt: null,
   };
+  // Шина параметров шагов для использования в последующих guards/templates.
+  if (!state.vars.steps || typeof state.vars.steps !== 'object' || Array.isArray(state.vars.steps)) {
+    state.vars.steps = {};
+  }
+  ctx.vars = state.vars;
 
   // Индексы для быстрого доступа к node-конфигам и зависимостям.
   const approvalConfig = {};
@@ -113,6 +120,92 @@ export async function jsonDAGWorkflow(input) {
     return node.required !== false;
   }
 
+  // Возвращает человекочитаемое имя шага.
+  function stepName(nodeId) {
+    const node = nodeById[nodeId];
+    if (!node) return nodeId || 'unknown-step';
+    return node.label || node.id;
+  }
+
+  // Формирует понятную причину остановки процесса.
+  function humanizeReasonCode(reason) {
+    const code = String(reason || '').trim().toLowerCase();
+    if (!code) return '';
+    const map = {
+      profile_incomplete: 'не заполнены обязательные поля профиля кандидата',
+      salary_above_recruiter_limit: 'ожидаемый оклад выше лимита рекрутера',
+      budget_not_feasible: 'финансовая модель не подтверждает бюджет',
+      risk_too_high: 'риск по проверке безопасности слишком высокий',
+      within_recruiter_limit: 'оклад находится в допустимом диапазоне',
+      budget_feasible: 'бюджет подтвержден',
+      risk_acceptable: 'уровень риска приемлем',
+      final_gate_passed: 'финальный precheck пройден',
+      committee_allowed: 'порог комитета компенсаций выполнен',
+      publish_allowed: 'публикация разрешена политикой',
+      gate_condition_failed: 'не пройдено gate-условие',
+      approval_decision: 'получено отрицательное решение согласующего',
+      step_failed: 'шаг завершился с ошибкой',
+    };
+    if (map[code]) return map[code];
+    return code.replace(/[_\-]+/g, ' ');
+  }
+
+  // Убирает технические префиксы и превращает причины в человекочитаемые.
+  function formatErrorMessage(errorText) {
+    if (!errorText) return '';
+    const raw = String(errorText);
+    const withoutHookPrefix = raw.replace(/^\[(pre|post)\s+hook\s+failed\]\s*/i, '');
+    const precheckMatch = withoutHookPrefix.match(/precheck rejected:\s*([^;.\n]+)(?:[;.\n]|$)/i);
+    if (precheckMatch) {
+      const reasonCode = String(precheckMatch[1] || '').trim();
+      const reason = humanizeReasonCode(reasonCode);
+      return `Precheck не пройден: ${reason || reasonCode}`;
+    }
+    return withoutHookPrefix;
+  }
+
+  function buildStatusMessage(status, meta = {}) {
+    const nodeText = meta.nodeId ? `шаг "${stepName(meta.nodeId)}"` : 'процесс';
+
+    if (status === 'completed') {
+      return 'Процесс успешно завершен.';
+    }
+
+    if (meta.reason === 'gate_condition_failed') {
+      const gate = meta.gate || meta.gateResult?.gate || null;
+      const gateReason = gate?.reason ? ` Причина: ${humanizeReasonCode(gate.reason)}.` : '';
+      const gateText =
+        gate && typeof gate === 'object'
+          ? ` Gate: status=${gate.status ?? 'unknown'}, score=${gate.score ?? 'n/a'}, threshold=${gate.threshold ?? 'n/a'}.${gateReason}`
+          : '';
+      return `Процесс отклонен: не пройдено gate-условие на ${nodeText}.${gateText}`;
+    }
+
+    if (meta.reason === 'approval_decision' || meta.decision === 'reject') {
+      const actor = meta.actor ? ` Участник: ${meta.actor}.` : '';
+      const comment = meta.comment ? ` Причина: ${meta.comment}.` : '';
+      return `Процесс отклонен: получено решение "decline" на ${nodeText}.${actor}${comment}`;
+    }
+
+    if (status === 'failed') {
+      const normalizedError = formatErrorMessage(meta.error);
+      const error = normalizedError ? ` Ошибка: ${normalizedError}.` : '';
+      return `Процесс остановлен с ошибкой на ${nodeText}.${error}`;
+    }
+
+    if (status === 'rejected') {
+      const comment = meta.comment ? ` Причина: ${meta.comment}.` : '';
+      return `Процесс отклонен на ${nodeText}.${comment}`;
+    }
+
+    if (status === 'needs_changes') {
+      const comment = meta.comment ? ` Комментарий: ${meta.comment}.` : '';
+      return `Процесс возвращен на доработку на ${nodeText}.${comment}`;
+    }
+
+    return `Процесс завершен со статусом "${status}" на ${nodeText}.`;
+  }
+
   // Переводит pending/running-узел в skipped при глобальном abort.
   function markSkipped(nodeState, status) {
     nodeState.status = 'skipped';
@@ -124,17 +217,88 @@ export async function jsonDAGWorkflow(input) {
     };
   }
 
+  // Преобразует nodeId в безопасный ключ для vars.steps.
+  function toVarKey(nodeId) {
+    return String(nodeId || '')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .toLowerCase();
+  }
+
+  // Рендерит и записывает setVars в общий vars-контекст.
+  function applyRenderedVars(setVars, localCtx) {
+    if (!setVars || typeof setVars !== 'object') return;
+    for (const [key, val] of Object.entries(setVars)) {
+      const resolved = renderTemplate(val, localCtx);
+      state.vars[key] = resolved;
+      ctx.vars[key] = resolved;
+    }
+  }
+
+  // Фиксирует output шага в state.stepParams и vars.steps.<stepKey>.
+  function persistStepOutputs(node, nodeState, extraCtx = {}, options = {}) {
+    const { applyNodeVars = true } = options;
+    const stepKey = toVarKey(node.id);
+    const snapshot = {
+      nodeId: node.id,
+      type: node.type,
+      status: nodeState.status,
+      startedAt: nodeState.startedAt,
+      completedAt: nodeState.completedAt,
+      result: nodeState.result,
+      error: nodeState.error,
+      hooks: nodeState.hooks,
+    };
+
+    state.stepParams[node.id] = snapshot;
+    state.vars.steps[stepKey] = snapshot;
+    ctx.vars.steps = state.vars.steps;
+
+    if (applyNodeVars && node.setVars) {
+      const localCtx = {
+        ...ctx,
+        node,
+        result: nodeState.result,
+        nodeState: snapshot,
+        step: snapshot,
+        approvals: state.approvals[node.id] || null,
+        ...extraCtx,
+      };
+      applyRenderedVars(node.setVars, localCtx);
+    }
+  }
+
   // Глобально останавливает процесс: отменяет running и скипает pending.
   function abortWorkflow(status, meta = {}) {
     if (abortReason) return;
     abortReason = status;
     terminalDecision = status;
     state.status = status;
+    state.finalDecision = status;
+    state.reasonCode = meta.reason || null;
+    state.failedNodeId = meta.nodeId || null;
+    state.failedNodeLabel = meta.nodeId ? stepName(meta.nodeId) : null;
+    const message = buildStatusMessage(status, meta);
     state.abort = {
       ...meta,
       status,
       at: new Date().toISOString(),
+      reasonText: meta.reason ? humanizeReasonCode(meta.reason) : null,
+      nodeLabel: meta.nodeId ? stepName(meta.nodeId) : null,
+      error: meta.error ? formatErrorMessage(meta.error) : meta.error,
+      message,
     };
+    state.failure = {
+      status,
+      reasonCode: meta.reason || null,
+      reasonText: meta.reason ? humanizeReasonCode(meta.reason) : null,
+      nodeId: meta.nodeId || null,
+      nodeLabel: meta.nodeId ? stepName(meta.nodeId) : null,
+      error: meta.error ? formatErrorMessage(meta.error) : meta.error || null,
+      technicalError: meta.technicalError || null,
+      at: state.abort.at,
+    };
+    state.statusMessage = message;
 
     for (const nodeState of Object.values(state.nodes)) {
       if (nodeState.status === 'pending') {
@@ -220,6 +384,7 @@ export async function jsonDAGWorkflow(input) {
         abortWorkflow(status, {
           nodeId,
           actor,
+          reason: 'approval_decision',
           decision: normalizedDecision,
           comment: trimmedComment,
         });
@@ -321,6 +486,22 @@ export async function jsonDAGWorkflow(input) {
         },
         correlation,
       });
+
+      // Для pre-hook дополнительно валидируем бизнес-результат precheck.
+      if (phase === 'pre' && hook.enforcePrecheck !== false) {
+        const precheck = result?.data?.precheck;
+        if (precheck && typeof precheck === 'object') {
+          const validation = String(precheck.validation || 'ok').toLowerCase();
+          const actorAllowed = precheck.actorAllowed !== false;
+          const lockAcquired = precheck.lockAcquired !== false;
+          const isValid = validation === 'ok' && actorAllowed && lockAcquired;
+          if (!isValid) {
+            const reasonCode = precheck.reason || precheck.message || validation;
+            throw new Error(`precheck rejected: ${reasonCode}; ${humanizeReasonCode(reasonCode)}`);
+          }
+        }
+      }
+
       return {
         ok: true,
         phase,
@@ -352,6 +533,7 @@ export async function jsonDAGWorkflow(input) {
 
     if (abortReason) {
       markSkipped(nodeState, abortReason);
+      persistStepOutputs(node, nodeState, { abortReason }, { applyNodeVars: false });
       return;
     }
 
@@ -360,10 +542,12 @@ export async function jsonDAGWorkflow(input) {
       nodeState.status = 'skipped';
       nodeState.completedAt = new Date().toISOString();
       nodeState.result = { skipped: true, reason: 'guard_false' };
+      persistStepOutputs(node, nodeState, { guardMatched: false });
       nodeState.hooks.post = await executeNodeHook(node, nodeState, 'post', node.post, {
         stepStatus: 'skipped',
         stepOutcome: 'guard_false',
       });
+      persistStepOutputs(node, nodeState, { guardMatched: false }, { applyNodeVars: false });
       return;
     }
 
@@ -371,6 +555,7 @@ export async function jsonDAGWorkflow(input) {
     nodeState.startedAt = new Date().toISOString();
 
     try {
+      let stepExtraCtx = {};
       // Сначала pre-hook.
       nodeState.hooks.pre = await executeNodeHook(node, nodeState, 'pre', node.pre, {
         stepStatus: 'running',
@@ -428,18 +613,14 @@ export async function jsonDAGWorkflow(input) {
           };
           const passed = evalGuard(gateCtx, passWhen);
 
-          if (node.setVars) {
-            for (const [key, val] of Object.entries(node.setVars)) {
-              const resolved = renderTemplate(val, gateCtx);
-              state.vars[key] = resolved;
-              ctx.vars[key] = resolved;
-            }
-          }
-
           nodeState.result = {
             ...result,
             passed,
             outcome: passed ? 'approved' : 'rejected',
+          };
+          stepExtraCtx = {
+            gate: result?.data?.gate ?? null,
+            gatePassed: passed,
           };
 
           if (!passed && node.required !== false) {
@@ -514,11 +695,7 @@ export async function jsonDAGWorkflow(input) {
             };
 
             if (gateCfg.setVars) {
-              for (const [key, val] of Object.entries(gateCfg.setVars)) {
-                const resolved = renderTemplate(val, gateCtx);
-                state.vars[key] = resolved;
-                ctx.vars[key] = resolved;
-              }
+              applyRenderedVars(gateCfg.setVars, gateCtx);
             }
 
             if (!passed && gateRequired) {
@@ -535,6 +712,10 @@ export async function jsonDAGWorkflow(input) {
             decisionActor: state.approvals[node.id].decisionActor,
             decisionComment: state.approvals[node.id].decisionComment,
             gate: gateInfo,
+          };
+          stepExtraCtx = {
+            approval: state.approvals[node.id],
+            gate: gateInfo?.data?.gate || null,
           };
 
           if (outcome === 'rejected' || outcome === 'needs_changes') {
@@ -560,14 +741,7 @@ export async function jsonDAGWorkflow(input) {
           }
 
           const evt = state.events[eventName].shift();
-          if (node.setVars) {
-            const localCtx = { ...ctx, event: evt?.data || {} };
-            for (const [key, val] of Object.entries(node.setVars)) {
-              const resolved = renderTemplate(val, localCtx);
-              state.vars[key] = resolved;
-              ctx.vars[key] = resolved;
-            }
-          }
+          stepExtraCtx = { event: evt?.data || {} };
           nodeState.result = { eventName, event: evt };
           break;
         }
@@ -608,6 +782,7 @@ export async function jsonDAGWorkflow(input) {
             workflowId: childWorkflowId,
           });
           nodeState.result = { result, childWorkflowId };
+          stepExtraCtx = { child: { workflowId: childWorkflowId, result } };
           break;
         }
         default:
@@ -618,11 +793,16 @@ export async function jsonDAGWorkflow(input) {
         nodeState.status = 'done';
       }
 
+      // Сохраняем параметры шага до post-hook, чтобы следующие шаги могли их использовать.
+      persistStepOutputs(node, nodeState, stepExtraCtx);
+
       // Затем post-hook.
       nodeState.hooks.post = await executeNodeHook(node, nodeState, 'post', node.post, {
         stepStatus: nodeState.status,
         stepOutcome: nodeState.result?.outcome || null,
       });
+      // Обновляем snapshot после post-hook без повторного setVars.
+      persistStepOutputs(node, nodeState, stepExtraCtx, { applyNodeVars: false });
     } catch (err) {
       if (abortReason) {
         markSkipped(nodeState, abortReason);
@@ -630,27 +810,35 @@ export async function jsonDAGWorkflow(input) {
           stepStatus: nodeState.status,
           stepOutcome: abortReason,
         });
+        persistStepOutputs(node, nodeState, { abortReason }, { applyNodeVars: false });
         return;
       }
 
       nodeState.status = 'failed';
+      const technicalError = err?.message || String(err);
+      const userFacingError = formatErrorMessage(technicalError);
       nodeState.error = {
-        message: err?.message || String(err),
+        message: userFacingError,
+        technicalMessage: technicalError,
       };
       // Fail-fast для всего процесса: отменяем остальные ветки.
       abortWorkflow('failed', {
         nodeId: node.id,
-        error: nodeState.error.message,
+        reason: 'step_failed',
+        error: userFacingError,
+        technicalError,
       });
 
       nodeState.hooks.post = await executeNodeHook(node, nodeState, 'post', node.post, {
         stepStatus: 'failed',
         stepOutcome: 'failed',
       });
+      persistStepOutputs(node, nodeState, {}, { applyNodeVars: false });
       return;
     } finally {
       // Фиксируем время завершения шага в любом исходе.
       nodeState.completedAt = new Date().toISOString();
+      persistStepOutputs(node, nodeState, {}, { applyNodeVars: false });
     }
   }
 
@@ -700,6 +888,9 @@ export async function jsonDAGWorkflow(input) {
   if (state.status === 'running') {
     // Нормальное завершение процесса.
     state.status = abortReason || terminalDecision || 'completed';
+  }
+  if (!state.statusMessage) {
+    state.statusMessage = buildStatusMessage(state.status, state.abort || {});
   }
   state.completedAt = new Date().toISOString();
   // Возвращаем полный state как результат workflow.

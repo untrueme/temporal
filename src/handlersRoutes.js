@@ -36,8 +36,16 @@ export function registerHandlersRoutes(app) {
       const stage = String(payload.stage || action.replace('gate.', '') || 'generic');
       const cost = Number(payload.cost ?? 0);
       const approvalsRequired = Number(payload.approvalsRequired ?? 2);
-      const threshold = stage.includes('finance') ? 70 : 60;
-      const score = Math.max(0, Math.round(92 - cost / 6 + approvalsRequired * 4));
+      const seniorityScore = Number(payload.seniorityScore ?? 50);
+      let threshold = 60;
+      if (stage.includes('finance')) threshold = 72;
+      if (stage.includes('recruiter')) threshold = 66;
+      if (stage.includes('security')) threshold = 68;
+
+      const score = Math.max(
+        0,
+        Math.min(100, Math.round(88 - cost / 7 + approvalsRequired * 5 + seniorityScore / 10))
+      );
       const status = score >= threshold ? 'PASS' : 'FAIL';
 
       result = {
@@ -47,6 +55,8 @@ export function registerHandlersRoutes(app) {
           score,
           threshold,
           status,
+          approvalsRequired,
+          cost,
           reason: status === 'PASS' ? 'risk acceptable' : 'risk too high',
         },
       };
@@ -54,6 +64,57 @@ export function registerHandlersRoutes(app) {
 
     // Для pre.* шагов добавляем имитацию policy pre-check.
     if (action.startsWith('pre.')) {
+      const check = String(payload.check || 'generic');
+      const candidateName = String(payload.candidateName || payload.name || '');
+      const salary = Number(payload.salary ?? payload.cost ?? 0);
+      let validation = 'ok';
+      let reason = 'passed';
+      let nextParams = {};
+
+      if (check === 'candidate_profile') {
+        const nameOk = candidateName.trim().length >= 3;
+        const salaryOk = salary > 0;
+        validation = nameOk && salaryOk ? 'ok' : 'failed';
+        reason = validation === 'ok' ? 'profile_complete' : 'profile_incomplete';
+        nextParams = {
+          candidateName,
+          requestedSalary: salary,
+        };
+      } else if (check === 'recruiter_gate') {
+        validation = salary <= 260 || salary === 0 ? 'ok' : 'failed';
+        reason = validation === 'ok' ? 'within_recruiter_limit' : 'salary_above_recruiter_limit';
+        nextParams = {
+          recruiterSalaryLimit: 260,
+          needsDirectorAttention: salary > 220,
+        };
+      } else if (check === 'finance_precheck') {
+        const affordabilityScore = Math.max(0, Math.min(100, Math.round(94 - salary / 3)));
+        validation = affordabilityScore >= 55 ? 'ok' : 'failed';
+        reason = validation === 'ok' ? 'budget_feasible' : 'budget_not_feasible';
+        nextParams = {
+          affordabilityScore,
+          budgetBand: salary >= 180 ? 'HIGH' : salary >= 120 ? 'MID' : 'LOW',
+        };
+      } else if (check === 'security_precheck') {
+        const riskTag = String(payload.riskTag || '').toLowerCase();
+        const riskScore = riskTag === 'high' ? 85 : riskTag === 'medium' ? 58 : 34;
+        validation = riskScore <= 70 ? 'ok' : 'failed';
+        reason = validation === 'ok' ? 'risk_acceptable' : 'risk_too_high';
+        nextParams = {
+          riskScore,
+          riskTag: riskTag || 'low',
+        };
+      } else if (check === 'final_gate') {
+        validation = 'ok';
+        reason = 'final_gate_passed';
+      } else if (check === 'compensation_committee') {
+        validation = 'ok';
+        reason = 'committee_allowed';
+      } else if (check === 'publish_acl') {
+        validation = 'ok';
+        reason = 'publish_allowed';
+      }
+
       // Это демонстрационный pre-процессор перед исполнением шага.
       result = {
         // Сохраняем базовые поля результата.
@@ -61,13 +122,17 @@ export function registerHandlersRoutes(app) {
         // Добавляем подробности pre-check.
         precheck: {
           // Версия условной политики.
-          policyVersion: 'v1',
+          policyVersion: 'v2',
           // Признак, что актор допущен.
-          actorAllowed: true,
+          actorAllowed: validation === 'ok',
           // Признак, что блокировка на изменение получена.
           lockAcquired: true,
           // Статус валидации.
-          validation: 'ok',
+          validation,
+          // Причина решения precheck.
+          reason,
+          // Производные параметры, которые можно перенести в vars следующих шагов.
+          nextParams,
         },
       };
     }

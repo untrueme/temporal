@@ -394,23 +394,23 @@ class DocWorkflowDemo extends LitElement {
       border: 1px dashed rgba(62, 86, 140, 0.32);
       background: #f8f9ff;
       padding: 8px;
-      overflow: auto;
+      overflow: hidden;
       overscroll-behavior: contain;
-      height: clamp(360px, 52vh, 620px);
-      max-height: 620px;
-      scrollbar-width: thin;
+      height: clamp(420px, 54vh, 640px);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(36, 58, 102, 0.08);
     }
 
     #graph {
-      min-height: 100%;
-      width: max-content;
+      height: 100%;
+      width: 100%;
+      min-height: 0;
+      min-width: 0;
     }
 
     #graph svg {
       display: block;
-      max-width: none;
-      height: auto;
+      width: 100%;
+      height: 100%;
       cursor: grab;
       touch-action: none;
     }
@@ -454,6 +454,40 @@ class DocWorkflowDemo extends LitElement {
       background: #8f9cb7;
     }
 
+    .graph-info {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 8px;
+    }
+
+    .rules-box {
+      border: 1px solid rgba(57, 83, 143, 0.24);
+      background: linear-gradient(160deg, rgba(239, 245, 255, 0.86), rgba(247, 250, 255, 0.86));
+      border-radius: 10px;
+      padding: 8px 10px;
+      display: grid;
+      gap: 6px;
+      color: #21325c;
+    }
+
+    .rules-title {
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: #233566;
+    }
+
+    .rules-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 10px;
+      font-size: 0.74rem;
+      line-height: 1.3;
+    }
+
+    .rule-item {
+      white-space: normal;
+    }
+
     .hint {
       font-size: 0.78rem;
       color: #5d6a8d;
@@ -481,6 +515,41 @@ class DocWorkflowDemo extends LitElement {
     .error {
       color: #a5283b;
       font-weight: 700;
+    }
+
+    .reason-box {
+      border-radius: 12px;
+      border: 1px solid #e6b2b2;
+      background: #fff3f3;
+      color: #6f1f1f;
+      padding: 10px 12px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .reason-box.warn {
+      border-color: #f0cc8f;
+      background: #fff8ec;
+      color: #7b521b;
+    }
+
+    .reason-title {
+      font-size: 0.86rem;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .reason-message {
+      font-size: 0.8rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .reason-meta {
+      font-size: 0.76rem;
+      line-height: 1.3;
+      opacity: 0.95;
     }
 
     .toast-stack {
@@ -540,6 +609,10 @@ class DocWorkflowDemo extends LitElement {
       .decision-row {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
+
+      .rules-grid {
+        grid-template-columns: 1fr;
+      }
     }
   `;
 
@@ -561,7 +634,8 @@ class DocWorkflowDemo extends LitElement {
     this.toasts = [];
     this.errorText = '';
     this.busy = false;
-    this.graphTransform = { x: 0, y: 0, k: 1 };
+    this.graphTransform = null;
+    this.lastReasonToastKey = '';
   }
 
   // При монтировании подгружаем список уже запущенных workflow.
@@ -604,7 +678,16 @@ class DocWorkflowDemo extends LitElement {
             payload: {
               check: 'candidate_profile',
               step: 'candidate.intake',
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
             },
+          },
+          setVars: {
+            candidate_name: '{{doc.title}}',
+            requested_salary: '{{doc.cost}}',
+            intake_validation: '{{nodeState.hooks.pre.result.data.precheck.validation}}',
+            intake_reason: '{{nodeState.hooks.pre.result.data.precheck.reason}}',
+            intake_score: '{{result.data.computed.score}}',
           },
           post: {
             app: 'doc',
@@ -631,6 +714,8 @@ class DocWorkflowDemo extends LitElement {
             payload: {
               check: 'recruiter_gate',
               step: 'recruiter.approval',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
             },
           },
           gate: {
@@ -638,8 +723,9 @@ class DocWorkflowDemo extends LitElement {
             action: 'gate.recruiter.score',
             payload: {
               stage: 'recruiter',
-              cost: '{{doc.cost}}',
+              cost: '{{vars.requested_salary}}',
               approvalsRequired: 2,
+              seniorityScore: '{{vars.intake_score}}',
             },
             passWhen: {
               op: 'eq',
@@ -647,6 +733,15 @@ class DocWorkflowDemo extends LitElement {
               right: 'PASS',
             },
             required: true,
+            setVars: {
+              recruiter_gate_status: '{{result.data.gate.status}}',
+              recruiter_gate_score: '{{result.data.gate.score}}',
+              recruiter_gate_threshold: '{{result.data.gate.threshold}}',
+            },
+          },
+          setVars: {
+            recruiter_outcome: '{{result.outcome}}',
+            recruiter_approved_actors: '{{result.approvedActors}}',
           },
           post: {
             app: 'doc',
@@ -667,8 +762,8 @@ class DocWorkflowDemo extends LitElement {
             baseUrl: '{{vars.docHandlers}}',
             docId: '{{doc.candidateId}}',
             payload: {
-              candidateName: '{{doc.title}}',
-              salary: '{{doc.cost}}',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
             },
           },
           pre: {
@@ -677,7 +772,16 @@ class DocWorkflowDemo extends LitElement {
             payload: {
               check: 'finance_precheck',
               step: 'finance.precheck',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
             },
+          },
+          setVars: {
+            finance_precheck_validation: '{{nodeState.hooks.pre.result.data.precheck.validation}}',
+            finance_precheck_reason: '{{nodeState.hooks.pre.result.data.precheck.reason}}',
+            finance_affordability_score: '{{nodeState.hooks.pre.result.data.precheck.nextParams.affordabilityScore}}',
+            finance_budget_band: '{{nodeState.hooks.pre.result.data.precheck.nextParams.budgetBand}}',
+            finance_child_workflow_id: '{{result.childWorkflowId}}',
           },
           post: {
             app: 'doc',
@@ -698,8 +802,9 @@ class DocWorkflowDemo extends LitElement {
             baseUrl: '{{vars.docHandlers}}',
             docId: '{{doc.candidateId}}',
             payload: {
-              candidateName: '{{doc.title}}',
-              salary: '{{doc.cost}}',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
+              riskTag: '{{vars.finance_budget_band}}',
             },
           },
           pre: {
@@ -708,7 +813,17 @@ class DocWorkflowDemo extends LitElement {
             payload: {
               check: 'security_precheck',
               step: 'security.precheck',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
+              riskTag: '{{vars.finance_budget_band}}',
             },
+          },
+          setVars: {
+            security_precheck_validation: '{{nodeState.hooks.pre.result.data.precheck.validation}}',
+            security_precheck_reason: '{{nodeState.hooks.pre.result.data.precheck.reason}}',
+            security_risk_score: '{{nodeState.hooks.pre.result.data.precheck.nextParams.riskScore}}',
+            security_risk_tag: '{{nodeState.hooks.pre.result.data.precheck.nextParams.riskTag}}',
+            security_child_workflow_id: '{{result.childWorkflowId}}',
           },
           post: {
             app: 'doc',
@@ -727,12 +842,20 @@ class DocWorkflowDemo extends LitElement {
           k: 1,
           required: true,
           after: ['finance.precheck'],
+          guard: {
+            op: 'eq',
+            left: { path: 'vars.finance_precheck_validation' },
+            right: 'ok',
+          },
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
             payload: {
               check: 'budget_gate',
               step: 'finance.approval',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
+              budgetBand: '{{vars.finance_budget_band}}',
             },
           },
           gate: {
@@ -740,8 +863,9 @@ class DocWorkflowDemo extends LitElement {
             action: 'gate.finance.score',
             payload: {
               stage: 'finance',
-              cost: '{{doc.cost}}',
-              approvalsRequired: 2,
+              cost: '{{vars.requested_salary}}',
+              approvalsRequired: 1,
+              seniorityScore: '{{vars.finance_affordability_score}}',
             },
             passWhen: {
               op: 'eq',
@@ -749,6 +873,15 @@ class DocWorkflowDemo extends LitElement {
               right: 'PASS',
             },
             required: true,
+            setVars: {
+              finance_gate_status: '{{result.data.gate.status}}',
+              finance_gate_score: '{{result.data.gate.score}}',
+              finance_gate_threshold: '{{result.data.gate.threshold}}',
+            },
+          },
+          setVars: {
+            finance_approval_outcome: '{{result.outcome}}',
+            finance_approved_actors: '{{result.approvedActors}}',
           },
           post: {
             app: 'doc',
@@ -767,13 +900,25 @@ class DocWorkflowDemo extends LitElement {
           k: 1,
           required: true,
           after: ['security.precheck'],
+          guard: {
+            op: 'eq',
+            left: { path: 'vars.security_precheck_validation' },
+            right: 'ok',
+          },
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
             payload: {
               check: 'security_gate',
               step: 'security.approval',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
+              riskTag: '{{vars.security_risk_tag}}',
             },
+          },
+          setVars: {
+            security_approval_outcome: '{{result.outcome}}',
+            security_approved_actors: '{{result.approvedActors}}',
           },
           post: {
             app: 'doc',
@@ -798,7 +943,15 @@ class DocWorkflowDemo extends LitElement {
             payload: {
               check: 'final_gate',
               step: 'director.approval',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
+              financeGateStatus: '{{vars.finance_gate_status}}',
+              securityRiskTag: '{{vars.security_risk_tag}}',
             },
+          },
+          setVars: {
+            director_approval_outcome: '{{result.outcome}}',
+            director_approved_actors: '{{result.approvedActors}}',
           },
           post: {
             app: 'doc',
@@ -817,14 +970,26 @@ class DocWorkflowDemo extends LitElement {
           k: 1,
           required: true,
           after: ['director.approval'],
-          guard: { op: 'gte', left: { path: 'doc.cost' }, right: 150 },
+          guard: {
+            op: 'and',
+            guards: [
+              { op: 'gte', left: { path: 'vars.requested_salary' }, right: 150 },
+              { op: 'eq', left: { path: 'vars.finance_gate_status' }, right: 'PASS' },
+            ],
+          },
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
             payload: {
               check: 'compensation_committee',
               step: 'comp.committee',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
             },
+          },
+          setVars: {
+            committee_approval_outcome: '{{result.outcome}}',
+            committee_approved_actors: '{{result.approvedActors}}',
           },
           post: {
             app: 'doc',
@@ -848,7 +1013,14 @@ class DocWorkflowDemo extends LitElement {
             payload: {
               check: 'publish_acl',
               step: 'notify',
+              candidateName: '{{vars.candidate_name}}',
+              salary: '{{vars.requested_salary}}',
+              directorOutcome: '{{vars.director_approval_outcome}}',
             },
+          },
+          setVars: {
+            final_offer_status: '{{result.data.ok}}',
+            final_offer_score: '{{result.data.computed.score}}',
           },
           post: {
             app: 'doc',
@@ -904,24 +1076,78 @@ class DocWorkflowDemo extends LitElement {
   // Локальная проверка guard на основе текущей суммы cost.
   guardActive(node) {
     if (!node?.guard) return true;
-    const left = Number(this.cost);
-    const right = Number(node.guard.right);
-    switch (node.guard.op) {
-      case 'gte':
-        return left >= right;
-      case 'gt':
-        return left > right;
-      case 'lte':
-        return left <= right;
-      case 'lt':
-        return left < right;
-      case 'eq':
-        return left === right;
-      case 'neq':
-        return left !== right;
-      default:
-        return left >= right;
-    }
+    const ctx = {
+      doc: {
+        ...(this.output?.doc || {}),
+        cost: Number(this.cost),
+      },
+      vars: {
+        ...(this.output?.vars || {}),
+      },
+    };
+
+    const getPath = (obj, path) => {
+      const parts = String(path || '').split('.');
+      let cur = obj;
+      for (const part of parts) {
+        if (cur == null) return undefined;
+        cur = cur[part];
+      }
+      return cur;
+    };
+
+    const resolveOperand = (operand) => {
+      if (
+        operand &&
+        typeof operand === 'object' &&
+        Object.prototype.hasOwnProperty.call(operand, 'path')
+      ) {
+        return getPath(ctx, operand.path);
+      }
+      return operand;
+    };
+
+    const evalExpr = (guard) => {
+      if (!guard) return true;
+      const op = guard.op || guard.operator;
+      if (op === 'and') {
+        const list = guard.guards || [];
+        return list.every((g) => evalExpr(g));
+      }
+      if (op === 'or') {
+        const list = guard.guards || [];
+        return list.some((g) => evalExpr(g));
+      }
+      if (op === 'not') {
+        return !evalExpr(guard.guard);
+      }
+
+      const left = resolveOperand(guard.left);
+      const right = resolveOperand(guard.right);
+      switch (op) {
+        case 'eq':
+          return left === right;
+        case 'ne':
+        case 'neq':
+          return left !== right;
+        case 'gt':
+          return left > right;
+        case 'gte':
+          return left >= right;
+        case 'lt':
+          return left < right;
+        case 'lte':
+          return left <= right;
+        case 'exists':
+          return left !== undefined && left !== null;
+        case 'in':
+          return Array.isArray(right) ? right.includes(left) : false;
+        default:
+          return false;
+      }
+    };
+
+    return evalExpr(node.guard);
   }
 
   // Узел обязателен "прямо сейчас" (учитывая guard).
@@ -1049,6 +1275,51 @@ class DocWorkflowDemo extends LitElement {
     });
   }
 
+  // Выбирает первый доступный approval-узел в текущем маршруте.
+  focusFirstSelectableApproval() {
+    const next = this.approvalNodes.find((node) => this.isSelectable(node.id));
+    if (!next) return false;
+    this.selectedNodeId = next.id;
+    this.nodeId = next.id;
+    this.actor = this.availableActors[0] || '';
+    return true;
+  }
+
+  // Ждет, пока выбранный шаг сменит статус после отправки сигнала.
+  async waitForNodeCompletion(workflowId, nodeId, { timeoutMs = 3400, intervalMs = 220 } = {}) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      await this.loadProgress(workflowId);
+      const status = this.output?.nodes?.[nodeId]?.status;
+      if (status === 'done' || status === 'skipped' || status === 'failed') {
+        return true;
+      }
+      const workflowStatus = String(this.output?.status || '').toLowerCase();
+      if (workflowStatus && workflowStatus !== 'running') {
+        return true;
+      }
+      await this.sleep(intervalMs);
+    }
+    return false;
+  }
+
+  // После старта процесса ждет автошаги и переводит на первый интерактивный узел.
+  async waitForFirstInteractiveStep(workflowId, { timeoutMs = 7000, intervalMs = 260 } = {}) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      await this.loadProgress(workflowId);
+      if (this.focusFirstSelectableApproval()) {
+        return true;
+      }
+      const workflowStatus = String(this.output?.status || '').toLowerCase();
+      if (workflowStatus && workflowStatus !== 'running') {
+        return false;
+      }
+      await this.sleep(intervalMs);
+    }
+    return false;
+  }
+
   // Нормализует технические ошибки API в понятные тексты для UI.
   formatErrorMessage(error) {
     const msg = error?.payload?.message || error?.message || String(error);
@@ -1119,6 +1390,7 @@ class DocWorkflowDemo extends LitElement {
         }
         this.ensureSelection();
         this.drawGraph();
+        this.maybeNotifyFailure(data);
         return;
       } catch (error) {
         lastError = error;
@@ -1145,7 +1417,11 @@ class DocWorkflowDemo extends LitElement {
         body: JSON.stringify(payload),
       });
       this.workflowId = data.workflowId;
-      await this.loadProgress(data.workflowId);
+      const movedToInteractive = await this.waitForFirstInteractiveStep(data.workflowId);
+      if (!movedToInteractive) {
+        await this.loadProgress(data.workflowId);
+      }
+      this.focusFirstSelectableApproval();
       await this.refreshWorkflowList({ silent: true });
     });
   }
@@ -1154,17 +1430,22 @@ class DocWorkflowDemo extends LitElement {
   async sendApproval() {
     await this.run(async () => {
       const workflowId = this.workflowId || `doc-${this.docId}`;
+      const nodeId = this.nodeId;
       await this.request(`/workflows/doc/${workflowId}/approval`, {
         method: 'POST',
         body: JSON.stringify({
-          nodeId: this.nodeId,
+          nodeId,
           actor: this.actor,
           decision: this.decision,
           comment: this.comment,
         }),
       });
       this.comment = '';
-      await this.loadProgress(workflowId);
+      const settled = await this.waitForNodeCompletion(workflowId, nodeId);
+      if (!settled) {
+        await this.loadProgress(workflowId);
+      }
+      this.focusFirstSelectableApproval();
       await this.refreshWorkflowList({ silent: true });
     });
   }
@@ -1173,6 +1454,7 @@ class DocWorkflowDemo extends LitElement {
   async queryProgress() {
     await this.run(async () => {
       await this.loadProgress();
+      this.focusFirstSelectableApproval();
       await this.refreshWorkflowList({ silent: true });
     });
   }
@@ -1189,6 +1471,7 @@ class DocWorkflowDemo extends LitElement {
         }),
       });
       await this.loadProgress(workflowId);
+      this.focusFirstSelectableApproval();
       await this.refreshWorkflowList({ silent: true });
     });
   }
@@ -1341,6 +1624,120 @@ class DocWorkflowDemo extends LitElement {
     return 'idle';
   }
 
+  // Человекочитаемая расшифровка reasonCode.
+  reasonCodeLabel(reasonCode) {
+    const code = String(reasonCode || '').trim().toLowerCase();
+    if (!code) return '';
+    const map = {
+      approval_decision: 'отрицательное решение согласующего',
+      gate_condition_failed: 'не пройдено gate-условие',
+      step_failed: 'ошибка выполнения шага',
+      profile_incomplete: 'не заполнены обязательные поля профиля кандидата',
+      salary_above_recruiter_limit: 'ожидаемый оклад выше лимита рекрутера',
+      budget_not_feasible: 'финансовая модель не подтверждает бюджет',
+      risk_too_high: 'риск по проверке безопасности слишком высокий',
+    };
+    return map[code] || code.replaceAll('_', ' ');
+  }
+
+  // Собирает понятную причину отказа/ошибки из progress-state.
+  resolveFailureInfo(progress = this.output) {
+    if (!progress) return null;
+    const status = String(progress.status || '').toLowerCase();
+    const abort = progress.abort || {};
+    const failure = progress.failure || {};
+    const signalError = progress.lastSignalError || null;
+
+    if (signalError) {
+      return {
+        key: `signal-${signalError.type}-${signalError.at || ''}`,
+        tone: 'warn',
+        title: 'Сигнал не принят',
+        message: signalError.message || 'Ошибка валидации сигнала',
+        nodeLabel: signalError.nodeId || null,
+        reasonText: null,
+        technicalError: null,
+        actor: signalError.actor || null,
+        comment: null,
+      };
+    }
+
+    const terminalFailed =
+      status === 'rejected' ||
+      status === 'failed' ||
+      status === 'needs_changes' ||
+      status === 'terminated' ||
+      status === 'timed_out' ||
+      status === 'canceled';
+    if (!terminalFailed) return null;
+
+    const failedNodeEntry = Object.entries(progress.nodes || {}).find(([, nodeState]) => {
+      return nodeState?.status === 'failed';
+    });
+    const failedNodeId = failedNodeEntry?.[0] || abort.nodeId || failure.nodeId || progress.failedNodeId || null;
+    const failedNodeLabel =
+      abort.nodeLabel ||
+      failure.nodeLabel ||
+      progress.failedNodeLabel ||
+      this.nodeById.get(failedNodeId)?.label ||
+      failedNodeId ||
+      null;
+    const reasonCode = abort.reason || failure.reasonCode || progress.reasonCode || null;
+    const reasonText = abort.reasonText || failure.reasonText || this.reasonCodeLabel(reasonCode);
+    const failedNodeMessage =
+      failedNodeEntry?.[1]?.error?.message ||
+      failedNodeEntry?.[1]?.error?.technicalMessage ||
+      null;
+    const message =
+      abort.message ||
+      progress.statusMessage ||
+      failure.error ||
+      abort.error ||
+      failedNodeMessage ||
+      'Процесс остановлен без детального сообщения.';
+    const technicalError =
+      abort.technicalError || failure.technicalError || failedNodeEntry?.[1]?.error?.technicalMessage || null;
+
+    return {
+      key: `${status}-${reasonCode || ''}-${failedNodeId || ''}-${message}`,
+      tone: 'error',
+      title: status === 'failed' ? 'Причина остановки процесса' : 'Причина отклонения процесса',
+      message,
+      nodeLabel: failedNodeLabel,
+      reasonText,
+      technicalError,
+      actor: abort.actor || null,
+      comment: abort.comment || null,
+    };
+  }
+
+  // Один раз показывает причину в toast после получения progress.
+  maybeNotifyFailure(progress) {
+    const info = this.resolveFailureInfo(progress);
+    if (!info || info.tone === 'warn') return;
+    if (info.key === this.lastReasonToastKey) return;
+    this.lastReasonToastKey = info.key;
+    this.showToast(`${info.title}: ${info.message}`);
+  }
+
+  // Рендерит заметный блок причины над JSON-выводом.
+  renderFailureInfo() {
+    const info = this.resolveFailureInfo();
+    if (!info) return html``;
+    const toneClass = info.tone === 'warn' ? 'warn' : '';
+    return html`
+      <div class="reason-box ${toneClass}">
+        <div class="reason-title">${info.title}</div>
+        <div class="reason-message">${info.message}</div>
+        ${info.nodeLabel ? html`<div class="reason-meta">Шаг: ${info.nodeLabel}</div>` : ''}
+        ${info.reasonText ? html`<div class="reason-meta">Код причины: ${info.reasonText}</div>` : ''}
+        ${info.actor ? html`<div class="reason-meta">Кто отклонил: ${info.actor}</div>` : ''}
+        ${info.comment ? html`<div class="reason-meta">Комментарий: ${info.comment}</div>` : ''}
+        ${info.technicalError ? html`<div class="reason-meta">Техническая деталь: ${info.technicalError}</div>` : ''}
+      </div>
+    `;
+  }
+
   // Цвет узла в графе по его статусу.
   nodeColor(nodeId, isFinal = false) {
     if (isFinal) {
@@ -1370,16 +1767,16 @@ class DocWorkflowDemo extends LitElement {
     return '#8d97b7';
   }
 
-  // Координаты карточки узла на горизонтальном графе.
+  // Координаты карточек на вертикальном графе.
   layoutFor(nodeId) {
     const order = this.activeRoute.nodes.map((node) => node.id);
     const index = order.indexOf(nodeId);
-    const cardW = 320;
+    const cardW = 300;
     const cardH = 112;
-    const colGap = 124;
-    const laneGap = 178;
-    const startX = 48;
-    const startY = 30;
+    const colGap = 102;
+    const laneGap = 154;
+    const startX = 40;
+    const startY = 24;
     const map = {
       'candidate.intake': { col: 1, row: 0 },
       'recruiter.approval': { col: 1, row: 1 },
@@ -1417,20 +1814,23 @@ class DocWorkflowDemo extends LitElement {
     const positions = new Map(nodes.map((node) => [node.id, { node, ...this.layoutFor(node.id) }]));
     const rightMost = Math.max(...[...positions.values()].map((item) => item.x + item.w));
     const bottomMost = Math.max(...[...positions.values()].map((item) => item.y + item.h));
-    const width = Math.max(1220, rightMost + 120);
-    const height = Math.max(980, bottomMost + 80);
+    const worldWidth = Math.max(1000, rightMost + 80);
+    const worldHeight = Math.max(860, bottomMost + 80);
+    const graphShell = this.renderRoot?.querySelector('.graph-shell');
+    const viewportWidth = Math.max(820, (graphShell?.clientWidth || 960) - 16);
+    const viewportHeight = Math.max(420, (graphShell?.clientHeight || 520) - 16);
 
     const svg = d3
       .select(container)
       .append('svg')
-      .attr('viewBox', `0 0 ${width} ${height}`)
-      .attr('width', width)
-      .attr('height', height)
+      .attr('width', viewportWidth)
+      .attr('height', viewportHeight)
       .attr('role', 'img');
 
     const defs = svg.append('defs');
-    const bgLayer = svg.append('g').attr('class', 'graph-bg');
-    const viewport = svg.append('g').attr('class', 'graph-viewport');
+    const content = svg.append('g').attr('class', 'graph-content');
+    const bgLayer = content.append('g').attr('class', 'graph-bg');
+    const viewport = content.append('g').attr('class', 'graph-viewport');
 
     const pattern = defs
       .append('pattern')
@@ -1439,13 +1839,13 @@ class DocWorkflowDemo extends LitElement {
       .attr('height', 26)
       .attr('patternUnits', 'userSpaceOnUse');
     pattern.append('circle').attr('cx', 2).attr('cy', 2).attr('r', 1.4).attr('fill', '#d2d9ea');
-    const bgPadding = Math.max(width, height) * 2;
+    const bgPadding = Math.max(worldWidth, worldHeight) * 1.8;
     bgLayer
       .append('rect')
       .attr('x', -bgPadding)
       .attr('y', -bgPadding)
-      .attr('width', width + bgPadding * 2)
-      .attr('height', height + bgPadding * 2)
+      .attr('width', worldWidth + bgPadding * 2)
+      .attr('height', worldHeight + bgPadding * 2)
       .attr('fill', 'url(#dot-grid)');
 
     const cardShadow = defs
@@ -1798,35 +2198,40 @@ class DocWorkflowDemo extends LitElement {
       }
     }
 
-    const saved = this.graphTransform || { x: 0, y: 0, k: 1 };
-    const normalizedTransform = {
-      x: Math.max(-width, Math.min(width, Number(saved.x) || 0)),
-      y: Math.max(-height, Math.min(height, Number(saved.y) || 0)),
-      k: Math.max(0.45, Math.min(2.8, Number(saved.k) || 1)),
-    };
-    const savedTransform = d3.zoomIdentity
-      .translate(normalizedTransform.x, normalizedTransform.y)
-      .scale(normalizedTransform.k);
-    const applyVisualTransform = (transform) => {
-      const k = transform.k || 1;
-      const tx = (transform.x || 0) / k;
-      const ty = (transform.y || 0) / k;
+    const fitScale = Math.min(
+      (viewportWidth - 30) / worldWidth,
+      (viewportHeight - 30) / worldHeight,
+      1
+    );
+    const fitX = Math.round((viewportWidth - worldWidth * fitScale) / 2);
+    const fitY = Math.round((viewportHeight - worldHeight * fitScale) / 2);
+    const defaultTransform = d3.zoomIdentity.translate(fitX, fitY).scale(fitScale);
 
-      // Масштаб меняет реальный размер SVG, чтобы внутренний скролл учитывал zoom.
-      svg.attr('width', Math.round(width * k)).attr('height', Math.round(height * k));
-      viewport.attr('transform', `translate(${tx},${ty})`);
-      bgLayer.attr('transform', `translate(${tx},${ty})`);
+    const hasSaved =
+      this.graphTransform &&
+      Number.isFinite(this.graphTransform.x) &&
+      Number.isFinite(this.graphTransform.y) &&
+      Number.isFinite(this.graphTransform.k);
+    const savedTransform = hasSaved
+      ? d3.zoomIdentity
+          .translate(this.graphTransform.x, this.graphTransform.y)
+          .scale(Math.max(0.45, Math.min(2.8, this.graphTransform.k)))
+      : defaultTransform;
+
+    const applyVisualTransform = (transform) => {
+      content.attr('transform', transform.toString());
     };
+
     const zoomBehavior = d3
       .zoom()
       .scaleExtent([0.45, 2.8])
       .extent([
         [0, 0],
-        [width, height],
+        [viewportWidth, viewportHeight],
       ])
       .translateExtent([
-        [-width * 0.6, -height * 0.6],
-        [width * 1.6, height * 1.6],
+        [-worldWidth * 0.5, -worldHeight * 0.5],
+        [worldWidth * 1.5, worldHeight * 1.5],
       ])
       .on('zoom', (event) => {
         applyVisualTransform(event.transform);
@@ -1838,18 +2243,36 @@ class DocWorkflowDemo extends LitElement {
       });
 
     svg.call(zoomBehavior).on('dblclick.zoom', null);
-    applyVisualTransform(savedTransform);
     svg.call(zoomBehavior.transform, savedTransform);
   }
 
   // Шаблон блока с легендой и контейнером графа.
   renderGraph() {
+    const currentCost = Number(this.cost || 0);
+    const committeeRule = currentCost >= 150 ? 'обязательно' : 'пропускается';
+    const recruiterPrecheck = currentCost > 260 ? 'не пройдет' : 'пройдет';
     return html`
-      <div class="legend">
-        <span class="ok"><i></i>выполнено</span>
-        <span class="err"><i></i>отклонено</span>
-        <span class="skip"><i></i>пропущено/опционально</span>
-        <span>колесо: зум, перетаскивание: панорама</span>
+      <div class="graph-info">
+        <div class="legend">
+          <span class="ok"><i></i>выполнено</span>
+          <span class="err"><i></i>отклонено</span>
+          <span class="skip"><i></i>пропущено/опционально</span>
+          <span>колесо: зум, перетаскивание: панорама</span>
+        </div>
+        <div class="rules-box">
+          <div class="rules-title">Ограничения сценария для тестирования</div>
+          <div class="rules-grid">
+            <div class="rule-item">sum < 150: комитет по компенсациям пропускается</div>
+            <div class="rule-item">sum >= 150: комитет становится обязательным</div>
+            <div class="rule-item">sum > 260: precheck рекрутера блокирует процесс</div>
+            <div class="rule-item">decline на обязательном шаге: процесс сразу отклоняется</div>
+            <div class="rule-item">финансы и безопасность: идут параллельно</div>
+            <div class="rule-item">следующий шаг активируется после завершения зависимостей</div>
+          </div>
+          <div class="hint">
+            Текущая сумма: <b>${currentCost}</b> | Комитет: <b>${committeeRule}</b> | Precheck рекрутера: <b>${recruiterPrecheck}</b>
+          </div>
+        </div>
       </div>
       <div class="graph-shell">
         <div id="graph"></div>
@@ -2016,6 +2439,7 @@ class DocWorkflowDemo extends LitElement {
 
                 <section class="panel">
                   <h2>Результат</h2>
+                  ${this.renderFailureInfo()}
                   <pre>${JSON.stringify(this.output || { hint: 'Запустите процесс или обновите прогресс' }, null, 2)}</pre>
                 </section>
               </div>
