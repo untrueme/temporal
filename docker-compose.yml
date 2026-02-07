@@ -1,0 +1,55 @@
+version: '3.5'
+
+services:
+  postgresql:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=temporal
+      - POSTGRES_PASSWORD=temporal
+      - POSTGRES_DB=temporal
+    ports:
+      - "5432:5432"
+    networks:
+      - temporal-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    ports:
+      - "7233:7233"
+    environment:
+      # ВНИМАНИЕ: Здесь используем postgres12 как имя драйвера
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      # Для Postgres база для visibility обычно та же самая
+      - VISIBILITY_DB=postgres12
+      - ENABLE_ES=false
+    networks:
+      - temporal-network
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CSRF_COOKIE_INSECURE=true
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8080
+    networks:
+      - temporal-network
+    depends_on:
+      - temporal
+
+networks:
+  temporal-network:
+    driver: bridge

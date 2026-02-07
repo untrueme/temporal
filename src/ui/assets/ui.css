@@ -1,0 +1,110 @@
+:root {
+  --bg-a: #f4f7ff;
+  --bg-b: #eefcf7;
+  --ink: #1f2533;
+  --muted: #5c657a;
+  --panel: rgba(255, 255, 255, 0.85);
+  --line: rgba(37, 50, 79, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at 15% 15%, var(--bg-a), transparent 40%),
+    radial-gradient(circle at 85% 85%, var(--bg-b), transparent 45%),
+    #f3f4f8;
+}
+
+.landing-shell {
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: 48px 20px 56px;
+}
+
+.hero h1 {
+  margin: 8px 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.05;
+}
+
+.hero p {
+  max-width: 640px;
+  color: var(--muted);
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  font-size: 0.76rem;
+  color: #3257af;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.nav-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 18px;
+  transition: transform 120ms ease, border-color 120ms ease;
+  backdrop-filter: blur(4px);
+}
+
+.nav-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(37, 50, 79, 0.3);
+}
+
+.nav-card h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+}
+
+.nav-card p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.nav-card.doc {
+  background: linear-gradient(150deg, rgba(87, 126, 255, 0.2), rgba(255, 255, 255, 0.86));
+}
+
+.nav-card.ticket {
+  background: linear-gradient(150deg, rgba(17, 157, 117, 0.2), rgba(255, 255, 255, 0.86));
+}
+
+.nav-card.trip {
+  background: linear-gradient(150deg, rgba(232, 144, 24, 0.22), rgba(255, 255, 255, 0.86));
+}
+
+.workflow-page.doc-theme {
+  --bg-a: #edf1ff;
+  --bg-b: #f0f8ff;
+}
+
+.workflow-page.ticket-theme {
+  --bg-a: #ecfff4;
+  --bg-b: #f0fff8;
+}
+
+.workflow-page.trip-theme {
+  --bg-a: #fff6ea;
+  --bg-b: #fff2d9;
+}
