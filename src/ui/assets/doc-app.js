@@ -34,9 +34,15 @@ class DocWorkflowDemo extends LitElement {
       font-family: 'Space Grotesk', 'Avenir Next', 'Segoe UI', sans-serif;
     }
 
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
     .shell {
       width: 100%;
-      min-height: 100vh;
+      height: 100vh;
       display: flex;
       flex-direction: column;
       border: 1px solid rgba(26, 58, 120, 0.18);
@@ -83,20 +89,21 @@ class DocWorkflowDemo extends LitElement {
       gap: 12px;
       padding: 14px;
       flex: 1;
+      min-height: 0;
       overflow: hidden;
     }
 
     .control-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
       align-items: stretch;
       min-width: 0;
-      flex: 1;
     }
 
     .control-row > .panel {
-      flex: 1 1 0;
       min-width: 0;
+      min-height: 0;
     }
 
     .panel {
@@ -108,39 +115,77 @@ class DocWorkflowDemo extends LitElement {
       gap: 7px;
       align-content: start;
       min-width: 0;
+      min-height: 0;
     }
 
     .panel.graph {
       padding: 10px;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .panel.result {
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-content: stretch;
+    }
+
+    .panel.graph .graph-shell {
+      flex: 1;
+      min-height: 0;
     }
 
     .workspace-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(280px, 22%) minmax(0, 1fr) minmax(340px, 32%);
+      grid-template-rows: minmax(0, 1fr);
       gap: 12px;
       align-items: stretch;
       min-width: 0;
       min-height: 0;
       flex: 1;
+      height: 100%;
+      max-height: 100%;
+      overflow: hidden;
     }
 
     .main-pane {
-      flex: 1;
+      order: 2;
       min-width: 0;
       min-height: 0;
-      display: flex;
-      flex-direction: column;
+      height: 100%;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
       gap: 12px;
       overflow: hidden;
     }
 
     .workflows-panel {
-      width: 320px;
-      min-width: 300px;
-      max-width: 360px;
+      order: 1;
+      width: auto;
+      min-width: 0;
+      max-width: none;
+      height: 100%;
       display: flex;
       flex-direction: column;
       gap: 8px;
       min-height: 0;
+      max-height: 100%;
+      overflow: hidden;
+    }
+
+    .result-pane {
+      order: 3;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+      max-height: 100%;
+      overflow: hidden;
     }
 
     .workflows-list {
@@ -225,6 +270,12 @@ class DocWorkflowDemo extends LitElement {
       gap: 8px;
       font-size: 0.74rem;
       color: #2a3a60;
+      cursor: pointer;
+    }
+
+    .wf-child:hover {
+      border-color: rgba(90, 113, 170, 0.52);
+      background: #edf3ff;
     }
 
     .wf-child-main {
@@ -314,6 +365,26 @@ class DocWorkflowDemo extends LitElement {
       font-size: 0.97rem;
     }
 
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .panel-head .head-note {
+      font-size: 0.74rem;
+      color: #4d5b80;
+      font-weight: 700;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     label {
       font-size: 0.75rem;
       color: #4a587a;
@@ -359,6 +430,12 @@ class DocWorkflowDemo extends LitElement {
       min-width: 0;
     }
 
+    .inline > div {
+      min-width: 0;
+      display: grid;
+      gap: 6px;
+    }
+
     .decision-row {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -390,13 +467,16 @@ class DocWorkflowDemo extends LitElement {
     }
 
     .graph-shell {
+      position: relative;
       border-radius: 12px;
       border: 1px dashed rgba(62, 86, 140, 0.32);
       background: #f8f9ff;
       padding: 8px;
       overflow: hidden;
       overscroll-behavior: contain;
-      height: clamp(420px, 54vh, 640px);
+      min-height: 140px;
+      height: 100%;
+      max-height: 100%;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(36, 58, 102, 0.08);
     }
 
@@ -405,6 +485,26 @@ class DocWorkflowDemo extends LitElement {
       width: 100%;
       min-height: 0;
       min-width: 0;
+    }
+
+    .graph-tooltip {
+      position: absolute;
+      z-index: 20;
+      pointer-events: none;
+      max-width: 320px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(66, 86, 138, 0.25);
+      background: rgba(22, 34, 62, 0.95);
+      color: #edf2ff;
+      font-size: 0.74rem;
+      line-height: 1.35;
+      box-shadow: 0 10px 28px rgba(17, 28, 56, 0.3);
+      opacity: 0;
+      transform: translateY(-3px);
+      transition: opacity 80ms ease;
+      white-space: normal;
+      word-break: break-word;
     }
 
     #graph svg {
@@ -496,7 +596,8 @@ class DocWorkflowDemo extends LitElement {
 
     pre {
       margin: 0;
-      max-height: 360px;
+      max-height: none;
+      max-width: 100%;
       overflow: auto;
       font-size: 0.73rem;
       background: #0f1729;
@@ -504,6 +605,18 @@ class DocWorkflowDemo extends LitElement {
       border-radius: 10px;
       padding: 10px;
       line-height: 1.35;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .result-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding-right: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     .status {
@@ -593,7 +706,7 @@ class DocWorkflowDemo extends LitElement {
 
     @media (max-width: 700px) {
       .workspace-row {
-        flex-direction: column;
+        grid-template-columns: 1fr;
       }
 
       .workflows-panel {
@@ -603,7 +716,7 @@ class DocWorkflowDemo extends LitElement {
       }
 
       .control-row {
-        flex-direction: column;
+        grid-template-columns: 1fr;
       }
 
       .decision-row {
@@ -636,6 +749,8 @@ class DocWorkflowDemo extends LitElement {
     this.busy = false;
     this.graphTransform = null;
     this.lastReasonToastKey = '';
+    this.navigationStack = [];
+    this.childParentMap = {};
   }
 
   // При монтировании подгружаем список уже запущенных workflow.
@@ -672,33 +787,6 @@ class DocWorkflowDemo extends LitElement {
             salary: '{{doc.cost}}',
             candidateId: '{{doc.candidateId}}',
           },
-          pre: {
-            app: 'doc',
-            action: 'pre.policy.check',
-            payload: {
-              check: 'candidate_profile',
-              step: 'candidate.intake',
-              candidateName: '{{doc.title}}',
-              salary: '{{doc.cost}}',
-            },
-          },
-          setVars: {
-            candidate_name: '{{doc.title}}',
-            requested_salary: '{{doc.cost}}',
-            intake_validation: '{{nodeState.hooks.pre.result.data.precheck.validation}}',
-            intake_reason: '{{nodeState.hooks.pre.result.data.precheck.reason}}',
-            intake_score: '{{result.data.computed.score}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'candidate.intake',
-              candidateName: '{{doc.title}}',
-              salary: '{{doc.cost}}',
-            },
-          },
         },
         {
           id: 'recruiter.approval',
@@ -714,8 +802,8 @@ class DocWorkflowDemo extends LitElement {
             payload: {
               check: 'recruiter_gate',
               step: 'recruiter.approval',
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
             },
           },
           gate: {
@@ -723,9 +811,8 @@ class DocWorkflowDemo extends LitElement {
             action: 'gate.recruiter.score',
             payload: {
               stage: 'recruiter',
-              cost: '{{vars.requested_salary}}',
+              cost: '{{doc.cost}}',
               approvalsRequired: 2,
-              seniorityScore: '{{vars.intake_score}}',
             },
             passWhen: {
               op: 'eq',
@@ -733,63 +820,24 @@ class DocWorkflowDemo extends LitElement {
               right: 'PASS',
             },
             required: true,
-            setVars: {
-              recruiter_gate_status: '{{result.data.gate.status}}',
-              recruiter_gate_score: '{{result.data.gate.score}}',
-              recruiter_gate_threshold: '{{result.data.gate.threshold}}',
-            },
-          },
-          setVars: {
-            recruiter_outcome: '{{result.outcome}}',
-            recruiter_approved_actors: '{{result.approvedActors}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'recruiter.approval',
-            },
           },
         },
         {
-          id: 'finance.precheck',
+          id: 'finance.group',
           type: 'child.start',
-          label: 'Финансовый скоринг (дочерний)',
+          label: 'Финансовая группа (скоринг + 2-of-N)',
           workflowType: 'candidateFinanceCheck',
           after: ['recruiter.approval'],
           input: {
-            baseUrl: '{{vars.docHandlers}}',
+            baseUrl: '{{context.docHandlers}}',
             docId: '{{doc.candidateId}}',
             payload: {
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
-            },
-          },
-          pre: {
-            app: 'doc',
-            action: 'pre.policy.check',
-            payload: {
-              check: 'finance_precheck',
-              step: 'finance.precheck',
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
             },
           },
           setVars: {
-            finance_precheck_validation: '{{nodeState.hooks.pre.result.data.precheck.validation}}',
-            finance_precheck_reason: '{{nodeState.hooks.pre.result.data.precheck.reason}}',
-            finance_affordability_score: '{{nodeState.hooks.pre.result.data.precheck.nextParams.affordabilityScore}}',
-            finance_budget_band: '{{nodeState.hooks.pre.result.data.precheck.nextParams.budgetBand}}',
             finance_child_workflow_id: '{{result.childWorkflowId}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'finance.precheck',
-            },
           },
         },
         {
@@ -799,97 +847,15 @@ class DocWorkflowDemo extends LitElement {
           workflowType: 'candidateSecurityCheck',
           after: ['recruiter.approval'],
           input: {
-            baseUrl: '{{vars.docHandlers}}',
+            baseUrl: '{{context.docHandlers}}',
             docId: '{{doc.candidateId}}',
             payload: {
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
-              riskTag: '{{vars.finance_budget_band}}',
-            },
-          },
-          pre: {
-            app: 'doc',
-            action: 'pre.policy.check',
-            payload: {
-              check: 'security_precheck',
-              step: 'security.precheck',
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
-              riskTag: '{{vars.finance_budget_band}}',
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
             },
           },
           setVars: {
-            security_precheck_validation: '{{nodeState.hooks.pre.result.data.precheck.validation}}',
-            security_precheck_reason: '{{nodeState.hooks.pre.result.data.precheck.reason}}',
-            security_risk_score: '{{nodeState.hooks.pre.result.data.precheck.nextParams.riskScore}}',
-            security_risk_tag: '{{nodeState.hooks.pre.result.data.precheck.nextParams.riskTag}}',
             security_child_workflow_id: '{{result.childWorkflowId}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'security.precheck',
-            },
-          },
-        },
-        {
-          id: 'finance.approval',
-          type: 'approval.kofn',
-          label: 'Согласование финансистов',
-          members: ['Финансист 1', 'Финансист 2'],
-          k: 1,
-          required: true,
-          after: ['finance.precheck'],
-          guard: {
-            op: 'eq',
-            left: { path: 'vars.finance_precheck_validation' },
-            right: 'ok',
-          },
-          pre: {
-            app: 'doc',
-            action: 'pre.policy.check',
-            payload: {
-              check: 'budget_gate',
-              step: 'finance.approval',
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
-              budgetBand: '{{vars.finance_budget_band}}',
-            },
-          },
-          gate: {
-            app: 'doc',
-            action: 'gate.finance.score',
-            payload: {
-              stage: 'finance',
-              cost: '{{vars.requested_salary}}',
-              approvalsRequired: 1,
-              seniorityScore: '{{vars.finance_affordability_score}}',
-            },
-            passWhen: {
-              op: 'eq',
-              left: { path: 'result.data.gate.status' },
-              right: 'PASS',
-            },
-            required: true,
-            setVars: {
-              finance_gate_status: '{{result.data.gate.status}}',
-              finance_gate_score: '{{result.data.gate.score}}',
-              finance_gate_threshold: '{{result.data.gate.threshold}}',
-            },
-          },
-          setVars: {
-            finance_approval_outcome: '{{result.outcome}}',
-            finance_approved_actors: '{{result.approvedActors}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'finance.approval',
-            },
           },
         },
         {
@@ -900,34 +866,6 @@ class DocWorkflowDemo extends LitElement {
           k: 1,
           required: true,
           after: ['security.precheck'],
-          guard: {
-            op: 'eq',
-            left: { path: 'vars.security_precheck_validation' },
-            right: 'ok',
-          },
-          pre: {
-            app: 'doc',
-            action: 'pre.policy.check',
-            payload: {
-              check: 'security_gate',
-              step: 'security.approval',
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
-              riskTag: '{{vars.security_risk_tag}}',
-            },
-          },
-          setVars: {
-            security_approval_outcome: '{{result.outcome}}',
-            security_approved_actors: '{{result.approvedActors}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'security.approval',
-            },
-          },
         },
         {
           id: 'director.approval',
@@ -936,31 +874,7 @@ class DocWorkflowDemo extends LitElement {
           members: ['Директор 1', 'Директор 2'],
           k: 1,
           required: true,
-          after: ['finance.approval', 'security.approval'],
-          pre: {
-            app: 'doc',
-            action: 'pre.policy.check',
-            payload: {
-              check: 'final_gate',
-              step: 'director.approval',
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
-              financeGateStatus: '{{vars.finance_gate_status}}',
-              securityRiskTag: '{{vars.security_risk_tag}}',
-            },
-          },
-          setVars: {
-            director_approval_outcome: '{{result.outcome}}',
-            director_approved_actors: '{{result.approvedActors}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'director.approval',
-            },
-          },
+          after: ['finance.group', 'security.approval'],
         },
         {
           id: 'comp.committee',
@@ -971,33 +885,9 @@ class DocWorkflowDemo extends LitElement {
           required: true,
           after: ['director.approval'],
           guard: {
-            op: 'and',
-            guards: [
-              { op: 'gte', left: { path: 'vars.requested_salary' }, right: 150 },
-              { op: 'eq', left: { path: 'vars.finance_gate_status' }, right: 'PASS' },
-            ],
-          },
-          pre: {
-            app: 'doc',
-            action: 'pre.policy.check',
-            payload: {
-              check: 'compensation_committee',
-              step: 'comp.committee',
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
-            },
-          },
-          setVars: {
-            committee_approval_outcome: '{{result.outcome}}',
-            committee_approved_actors: '{{result.approvedActors}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'comp.committee',
-            },
+            op: 'gte',
+            left: { path: 'doc.cost' },
+            right: 150,
           },
         },
         {
@@ -1007,28 +897,9 @@ class DocWorkflowDemo extends LitElement {
           app: 'doc',
           action: 'candidate.offer.publish',
           after: ['comp.committee'],
-          pre: {
-            app: 'doc',
-            action: 'pre.policy.check',
-            payload: {
-              check: 'publish_acl',
-              step: 'notify',
-              candidateName: '{{vars.candidate_name}}',
-              salary: '{{vars.requested_salary}}',
-              directorOutcome: '{{vars.director_approval_outcome}}',
-            },
-          },
-          setVars: {
-            final_offer_status: '{{result.data.ok}}',
-            final_offer_score: '{{result.data.computed.score}}',
-          },
-          post: {
-            app: 'doc',
-            action: 'kafka.snapshot',
-            payload: {
-              topic: 'doc.history.snapshots',
-              step: 'notify',
-            },
+          payload: {
+            candidateName: '{{doc.title}}',
+            salary: '{{doc.cost}}',
           },
         },
       ],
@@ -1037,7 +908,7 @@ class DocWorkflowDemo extends LitElement {
 
   // Активный маршрут: из execution state (если есть), иначе локальный шаблон.
   get activeRoute() {
-    const route = this.output?.route;
+    const route = this.output?.context?.route;
     if (route && Array.isArray(route.nodes) && route.nodes.length > 0) {
       return route;
     }
@@ -1058,13 +929,23 @@ class DocWorkflowDemo extends LitElement {
   get availableActors() {
     const node = this.selectedNode;
     if (!node) return [];
-    const approved = this.output?.approvals?.[node.id]?.approvedActors || [];
+    const approved = this.getStepState(node.id)?.approval?.approvedActors || [];
     return (node.members || []).filter((member) => !approved.includes(member));
   }
 
   // Быстрый map nodeId -> nodeConfig.
   get nodeById() {
     return new Map(this.activeRoute.nodes.map((node) => [node.id, node]));
+  }
+
+  // Каноничные runtime-состояния шагов.
+  get stepStates() {
+    return this.output?.context?.steps || {};
+  }
+
+  // Безопасный доступ к runtime-состоянию шага.
+  getStepState(nodeId) {
+    return this.stepStates?.[nodeId] || null;
   }
 
   // Возвращает зависимости узла (after[]).
@@ -1076,14 +957,14 @@ class DocWorkflowDemo extends LitElement {
   // Локальная проверка guard на основе текущей суммы cost.
   guardActive(node) {
     if (!node?.guard) return true;
+    const runtimeContext = this.output?.context || {};
     const ctx = {
       doc: {
-        ...(this.output?.doc || {}),
+        ...(this.output?.context?.document || {}),
         cost: Number(this.cost),
       },
-      vars: {
-        ...(this.output?.vars || {}),
-      },
+      context: runtimeContext,
+      vars: runtimeContext,
     };
 
     const getPath = (obj, path) => {
@@ -1150,6 +1031,23 @@ class DocWorkflowDemo extends LitElement {
     return evalExpr(node.guard);
   }
 
+  // Каноничный, упрощенный view результата для панели "Результат".
+  get outputForDisplay() {
+    if (!this.output) return null;
+    const view = {
+      processType: this.output.processType,
+      status: this.output.status,
+      statusMessage: this.output.statusMessage || null,
+      startedAt: this.output.startedAt || null,
+      completedAt: this.output.completedAt || null,
+      context: this.output.context || {},
+    };
+    if (this.output.abort) view.abort = this.output.abort;
+    if (this.output.failure) view.failure = this.output.failure;
+    if (this.output.lastSignalError) view.lastSignalError = this.output.lastSignalError;
+    return view;
+  }
+
   // Узел обязателен "прямо сейчас" (учитывая guard).
   isRequiredNow(node) {
     if (!node) return false;
@@ -1159,7 +1057,7 @@ class DocWorkflowDemo extends LitElement {
 
   // doneish-статус узла в текущем output.
   doneish(nodeId) {
-    const nodeState = this.output?.nodes?.[nodeId];
+    const nodeState = this.getStepState(nodeId);
     if (!nodeState) return false;
     return nodeState.status === 'done' || nodeState.status === 'skipped';
   }
@@ -1174,7 +1072,7 @@ class DocWorkflowDemo extends LitElement {
       return deps.length === 0;
     }
 
-    const state = this.output.nodes?.[node.id];
+    const state = this.getStepState(node.id);
     if (state && (state.status === 'done' || state.status === 'skipped')) {
       return false;
     }
@@ -1290,7 +1188,7 @@ class DocWorkflowDemo extends LitElement {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
       await this.loadProgress(workflowId);
-      const status = this.output?.nodes?.[nodeId]?.status;
+      const status = this.getStepState(nodeId)?.status;
       if (status === 'done' || status === 'skipped' || status === 'failed') {
         return true;
       }
@@ -1376,17 +1274,22 @@ class DocWorkflowDemo extends LitElement {
   // Загружает progress выбранного workflow с retry для query handler race.
   async loadProgress(workflowId) {
     const id = workflowId || this.workflowId || `doc-${this.docId}`;
+    const previousWorkflowId = this.workflowId;
     const maxAttempts = 5;
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         const data = await this.request(`/workflows/doc/${id}/progress`);
+        if (previousWorkflowId && previousWorkflowId !== id) {
+          this.graphTransform = null;
+        }
         this.workflowId = id;
         this.output = data;
         this.cacheWorkflowChildren(id, data);
-        if (data?.doc?.cost !== undefined) {
-          this.cost = Number(data.doc.cost);
+        const nextCost = data?.context?.document?.cost ?? data?.doc?.cost;
+        if (nextCost !== undefined) {
+          this.cost = Number(nextCost);
         }
         this.ensureSelection();
         this.drawGraph();
@@ -1416,6 +1319,7 @@ class DocWorkflowDemo extends LitElement {
         method: 'POST',
         body: JSON.stringify(payload),
       });
+      this.navigationStack = [];
       this.workflowId = data.workflowId;
       const movedToInteractive = await this.waitForFirstInteractiveStep(data.workflowId);
       if (!movedToInteractive) {
@@ -1502,7 +1406,7 @@ class DocWorkflowDemo extends LitElement {
 
   // Извлекает дочерние workflow из node result.
   extractChildWorkflows(progress) {
-    const nodes = progress?.nodes || {};
+    const nodes = progress?.context?.steps || {};
     const children = [];
     const seen = new Set();
 
@@ -1540,6 +1444,13 @@ class DocWorkflowDemo extends LitElement {
   cacheWorkflowChildren(workflowId, progress) {
     if (!workflowId) return;
     const children = this.extractChildWorkflows(progress);
+    const nextChildParentMap = { ...this.childParentMap };
+    for (const child of children) {
+      if (child?.workflowId) {
+        nextChildParentMap[child.workflowId] = workflowId;
+      }
+    }
+    this.childParentMap = nextChildParentMap;
     this.workflowChildren = {
       ...this.workflowChildren,
       [workflowId]: children,
@@ -1585,10 +1496,71 @@ class DocWorkflowDemo extends LitElement {
   }
 
   // Выбор workflow из левой панели.
-  async pickWorkflow(workflowId) {
+  async pickWorkflow(workflowId, options = {}) {
     if (!workflowId) return;
+    const {
+      preserveStack = false,
+      parentWorkflowId = null,
+      resetToRoot = true,
+    } = options;
+    if (parentWorkflowId) {
+      const tail = this.navigationStack[this.navigationStack.length - 1];
+      if (tail !== parentWorkflowId) {
+        this.navigationStack = [...this.navigationStack, parentWorkflowId];
+      }
+    } else if (!preserveStack && resetToRoot) {
+      this.navigationStack = [];
+    }
     this.workflowId = workflowId;
     await this.queryProgress();
+  }
+
+  // Возврат из дочернего процесса к родительскому.
+  async goBackToParentWorkflow() {
+    if (this.navigationStack.length === 0) return;
+    const parentWorkflowId = this.navigationStack[this.navigationStack.length - 1];
+    this.navigationStack = this.navigationStack.slice(0, -1);
+    await this.pickWorkflow(parentWorkflowId, { preserveStack: true, resetToRoot: false });
+  }
+
+  // Извлекает child workflow id для узла child.start.
+  childWorkflowIdForNode(nodeId) {
+    const nodeState = this.getStepState(nodeId);
+    const explicitId =
+      nodeState?.result?.childWorkflowId ||
+      nodeState?.result?.child?.workflowId ||
+      null;
+    if (explicitId) return explicitId;
+
+    const fromTree = (this.workflowChildren?.[this.workflowId] || []).find((child) => {
+      return child.parentNodeId === nodeId;
+    });
+    if (fromTree?.workflowId) return fromTree.workflowId;
+
+    // Child workflowId формируется детерминированно в engine: <parentWorkflowId>-<nodeId>.
+    if (this.workflowId && nodeId) {
+      return `${this.workflowId}-${nodeId}`;
+    }
+    return null;
+  }
+
+  // Drill-down в дочерний процесс по узлу маршрута.
+  async drillIntoChildWorkflow(nodeId) {
+    await this.run(async () => {
+      const childWorkflowId = this.childWorkflowIdForNode(nodeId);
+      if (!childWorkflowId) {
+        throw new Error('Дочерний workflow еще не создан или не завершил запуск');
+      }
+      const parentWorkflowId = this.workflowId;
+      const tail = this.navigationStack[this.navigationStack.length - 1];
+      if (tail !== parentWorkflowId) {
+        this.navigationStack = [...this.navigationStack, parentWorkflowId];
+      }
+      this.workflowId = childWorkflowId;
+      await this.loadProgress(childWorkflowId);
+      this.focusFirstSelectableApproval();
+      await this.refreshWorkflowList({ silent: true });
+    });
   }
 
   // Признак, что в процессе есть отказ/ошибка (для подсветки финала красным).
@@ -1604,18 +1576,45 @@ class DocWorkflowDemo extends LitElement {
     ) {
       return true;
     }
-    if (!this.output?.nodes) return false;
-    return Object.values(this.output.nodes).some((nodeState) => {
+    const stepStates = this.output?.context?.steps || {};
+    if (!stepStates || typeof stepStates !== 'object') return false;
+    return Object.values(stepStates).some((nodeState) => {
       const outcome = nodeState?.result?.outcome;
-      return outcome === 'rejected' || outcome === 'needs_changes';
+      const childStatus = String(
+        nodeState?.result?.childStatus || nodeState?.result?.result?.status || ''
+      ).toLowerCase();
+      return (
+        outcome === 'rejected' ||
+        outcome === 'needs_changes' ||
+        childStatus === 'rejected' ||
+        childStatus === 'failed' ||
+        childStatus === 'needs_changes' ||
+        childStatus === 'terminated' ||
+        childStatus === 'timed_out' ||
+        childStatus === 'canceled'
+      );
     });
   }
 
   // Нормализация статуса узла в удобные UI-состояния.
   resolveNodeStatus(nodeId) {
-    const nodeState = this.output?.nodes?.[nodeId];
+    const nodeState = this.getStepState(nodeId);
     if (!nodeState) return 'idle';
     const outcome = nodeState?.result?.outcome;
+    const childStatus = String(
+      nodeState?.result?.childStatus || nodeState?.result?.result?.status || ''
+    ).toLowerCase();
+    if (
+      childStatus === 'failed' ||
+      childStatus === 'rejected' ||
+      childStatus === 'needs_changes' ||
+      childStatus === 'terminated' ||
+      childStatus === 'timed_out' ||
+      childStatus === 'canceled'
+    ) {
+      return 'rejected';
+    }
+    if (childStatus === 'running') return 'running';
     if (outcome === 'rejected' || outcome === 'needs_changes') return 'rejected';
     if (nodeState.status === 'failed') return 'rejected';
     if (nodeState.status === 'running') return 'running';
@@ -1632,6 +1631,7 @@ class DocWorkflowDemo extends LitElement {
       approval_decision: 'отрицательное решение согласующего',
       gate_condition_failed: 'не пройдено gate-условие',
       step_failed: 'ошибка выполнения шага',
+      child_process_failed: 'дочерний процесс завершился неуспешно',
       profile_incomplete: 'не заполнены обязательные поля профиля кандидата',
       salary_above_recruiter_limit: 'ожидаемый оклад выше лимита рекрутера',
       budget_not_feasible: 'финансовая модель не подтверждает бюджет',
@@ -1671,7 +1671,7 @@ class DocWorkflowDemo extends LitElement {
       status === 'canceled';
     if (!terminalFailed) return null;
 
-    const failedNodeEntry = Object.entries(progress.nodes || {}).find(([, nodeState]) => {
+    const failedNodeEntry = Object.entries(progress?.context?.steps || {}).find(([, nodeState]) => {
       return nodeState?.status === 'failed';
     });
     const failedNodeId = failedNodeEntry?.[0] || abort.nodeId || failure.nodeId || progress.failedNodeId || null;
@@ -1745,7 +1745,7 @@ class DocWorkflowDemo extends LitElement {
       if (String(this.output?.status || '').toLowerCase() === 'completed') return '#2fca6a';
       const finalStatus = this.resolveNodeStatus(nodeId);
       if (finalStatus === 'running') return '#4e7bff';
-      const done = this.output?.nodes?.[nodeId]?.status === 'done';
+      const done = this.getStepState(nodeId)?.status === 'done';
       return done ? '#2fca6a' : '#c2c8d8';
     }
 
@@ -1771,26 +1771,28 @@ class DocWorkflowDemo extends LitElement {
   layoutFor(nodeId) {
     const order = this.activeRoute.nodes.map((node) => node.id);
     const index = order.indexOf(nodeId);
-    const cardW = 300;
-    const cardH = 112;
-    const colGap = 102;
-    const laneGap = 154;
+    const cardW = 360;
+    const cardH = 146;
+    const colGap = 168;
+    const laneGap = 212;
     const startX = 40;
     const startY = 24;
     const map = {
       'candidate.intake': { col: 1, row: 0 },
       'recruiter.approval': { col: 1, row: 1 },
-      'finance.precheck': { col: 0, row: 2 },
+      'finance.group': { col: 0, row: 2 },
       'security.precheck': { col: 2, row: 2 },
-      'finance.approval': { col: 0, row: 3 },
       'security.approval': { col: 2, row: 3 },
       'director.approval': { col: 1, row: 4 },
       'comp.committee': { col: 1, row: 5 },
+      'finance.child.scoring': { col: 1, row: 0 },
+      'finance.child.approval': { col: 1, row: 1 },
+      'finance.child.finalize': { col: 1, row: 2 },
       notify: { col: 1, row: 6, terminal: true },
     };
     const slot = map[nodeId] || { col: Math.max(0, index), row: 1, terminal: false };
-    const w = slot.terminal ? 174 : cardW;
-    const h = slot.terminal ? 126 : cardH;
+    const w = slot.terminal ? 212 : cardW;
+    const h = slot.terminal ? 136 : cardH;
     const x = startX + slot.col * (cardW + colGap);
     const y = startY + slot.row * laneGap;
     return { x, y, w, h, order: index + 1, terminal: Boolean(slot.terminal) };
@@ -1814,11 +1816,54 @@ class DocWorkflowDemo extends LitElement {
     const positions = new Map(nodes.map((node) => [node.id, { node, ...this.layoutFor(node.id) }]));
     const rightMost = Math.max(...[...positions.values()].map((item) => item.x + item.w));
     const bottomMost = Math.max(...[...positions.values()].map((item) => item.y + item.h));
-    const worldWidth = Math.max(1000, rightMost + 80);
-    const worldHeight = Math.max(860, bottomMost + 80);
+    const worldWidth = Math.max(1360, rightMost + 120);
+    const worldHeight = Math.max(1080, bottomMost + 120);
     const graphShell = this.renderRoot?.querySelector('.graph-shell');
     const viewportWidth = Math.max(820, (graphShell?.clientWidth || 960) - 16);
     const viewportHeight = Math.max(420, (graphShell?.clientHeight || 520) - 16);
+
+    let tooltip = graphShell?.querySelector('.graph-tooltip');
+    if (!tooltip && graphShell) {
+      tooltip = document.createElement('div');
+      tooltip.className = 'graph-tooltip';
+      graphShell.appendChild(tooltip);
+    }
+    if (tooltip) {
+      tooltip.style.opacity = '0';
+      tooltip.innerHTML = '';
+    }
+
+    const escapeHtml = (value) => {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+    };
+    const nodeStatusLabel = (status) => {
+      if (status === 'done') return 'выполнено';
+      if (status === 'running') return 'в работе';
+      if (status === 'rejected') return 'отклонено';
+      if (status === 'skipped') return 'пропущено';
+      return 'ожидание';
+    };
+    const showTooltip = (event, lines) => {
+      if (!tooltip || !graphShell) return;
+      const safe = lines.filter(Boolean).map((line) => `<div>${escapeHtml(line)}</div>`).join('');
+      tooltip.innerHTML = safe;
+      tooltip.style.opacity = '1';
+      const shellRect = graphShell.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const px = event.clientX - shellRect.left + 12;
+      const py = event.clientY - shellRect.top + 12;
+      const maxX = shellRect.width - tooltipRect.width - 8;
+      const maxY = shellRect.height - tooltipRect.height - 8;
+      tooltip.style.left = `${Math.max(8, Math.min(maxX, px))}px`;
+      tooltip.style.top = `${Math.max(8, Math.min(maxY, py))}px`;
+    };
+    const hideTooltip = () => {
+      if (!tooltip) return;
+      tooltip.style.opacity = '0';
+    };
 
     const svg = d3
       .select(container)
@@ -1945,6 +1990,11 @@ class DocWorkflowDemo extends LitElement {
       const { x, y, w, h, terminal } = positions.get(node.id);
       const isFinal = node.id === 'notify';
       const isApproval = node.type === 'approval.kofn';
+      const isChildGroup = node.type === 'child.start';
+      const childNodeState = this.getStepState(node.id);
+      const childStepStarted = Boolean(childNodeState && childNodeState.status !== 'pending');
+      const childWorkflowId = this.childWorkflowIdForNode(node.id);
+      const canOpenChild = Boolean(isChildGroup && childStepStarted && childWorkflowId);
       const selectable = this.isSelectable(node.id);
       const selected = node.id === this.selectedNodeId;
       const color = this.nodeColor(node.id, isFinal);
@@ -1952,39 +2002,86 @@ class DocWorkflowDemo extends LitElement {
       const strokeWidth = selected ? 2.5 : 1.6;
       const cardOpacity = isApproval && !selectable ? 0.78 : 1;
       const nodeStatus = this.resolveNodeStatus(node.id);
+      const approvalInfo = this.getStepState(node.id)?.approval || null;
+      const gateStatus = this.getStepState(node.id)?.result?.gate?.status || 'WAIT';
+      const gateReason = this.getStepState(node.id)?.result?.gate?.data?.gate?.reason || null;
+      const tooltipLines = [
+        `${node.label || node.id}`,
+        `Тип: ${
+          node.type === 'approval.kofn'
+            ? 'Согласование'
+            : node.type === 'child.start'
+              ? 'Дочерний процесс'
+              : 'Автошаг'
+        }`,
+        `Статус: ${nodeStatusLabel(nodeStatus)}`,
+        isApproval ? `Проголосовало: ${(approvalInfo?.approvedActors || []).length}/${node.k || 0}` : null,
+        isApproval && node.gate ? `Контроль после голосования: ${gateStatus}` : null,
+        isApproval && node.gate && gateReason ? `Причина: ${gateReason}` : null,
+        isChildGroup
+          ? (canOpenChild ? 'Двойной клик: открыть дочерний процесс' : 'Дочерний процесс еще не готов к открытию')
+          : null,
+        node.guard ? `Условный шаг: ${this.isRequiredNow(node) ? 'обязателен' : 'опционален'}` : null,
+      ];
 
       if (terminal) {
-        const cx = x + w / 2;
-        const cy = y + h / 2;
-        const rx = w / 2;
-        const ry = h / 2;
+        const finalCompleted =
+          String(this.output?.status || '').toLowerCase() === 'completed' ||
+          nodeStatus === 'done';
+        const finalStatusText = finalCompleted
+          ? 'завершено'
+          : this.hasRejection()
+            ? 'отклонено'
+            : 'ожидание';
 
         nodeGroup
-          .append('ellipse')
-          .attr('cx', cx)
-          .attr('cy', cy)
-          .attr('rx', rx)
-          .attr('ry', ry)
+          .append('rect')
+          .attr('x', x)
+          .attr('y', y)
+          .attr('width', w)
+          .attr('height', h)
+          .attr('rx', 18)
           .attr('fill', '#ffffff')
-          .attr('stroke', color)
-          .attr('stroke-width', 4)
+          .attr('stroke', '#d7deef')
+          .attr('stroke-width', 1.8)
           .attr('filter', 'url(#card-shadow)')
           .style('pointer-events', 'none');
 
         nodeGroup
+          .append('line')
+          .attr('x1', x + 12)
+          .attr('y1', y + 4)
+          .attr('x2', x + w - 12)
+          .attr('y2', y + 4)
+          .attr('stroke', color)
+          .attr('stroke-width', 6)
+          .attr('stroke-linecap', 'round')
+          .style('pointer-events', 'none');
+
+        nodeGroup
+          .append('line')
+          .attr('x1', x)
+          .attr('y1', y + 44)
+          .attr('x2', x + w)
+          .attr('y2', y + 44)
+          .attr('stroke', '#ebeff8')
+          .attr('stroke-width', 1.5)
+          .style('pointer-events', 'none');
+
+        nodeGroup
           .append('circle')
-          .attr('cx', x + 24)
-          .attr('cy', y + 22)
-          .attr('r', 14)
+          .attr('cx', x + 30)
+          .attr('cy', y + 26)
+          .attr('r', 15)
           .attr('fill', '#f4f7fc')
           .attr('stroke', '#d8dfef')
-          .attr('stroke-width', 1.3)
+          .attr('stroke-width', 1.4)
           .style('pointer-events', 'none');
 
         nodeGroup
           .append('text')
-          .attr('x', x + 24)
-          .attr('y', y + 27)
+          .attr('x', x + 30)
+          .attr('y', y + 31)
           .attr('text-anchor', 'middle')
           .attr('font-size', 13)
           .attr('font-weight', 700)
@@ -1994,29 +2091,44 @@ class DocWorkflowDemo extends LitElement {
 
         nodeGroup
           .append('text')
-          .attr('x', cx)
-          .attr('y', cy - 8)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', 15)
-          .attr('font-weight', 800)
-          .attr('fill', '#131f3f')
+          .attr('x', x + 56)
+          .attr('y', y + 31)
+          .attr('font-size', 12)
+          .attr('font-weight', 700)
+          .attr('fill', '#5f6f95')
           .style('pointer-events', 'none')
-          .text('Финал');
-
-        const finalCompleted =
-          String(this.output?.status || '').toLowerCase() === 'completed' ||
-          nodeStatus === 'done';
+          .text('Финальный шаг');
 
         nodeGroup
           .append('text')
-          .attr('x', cx)
-          .attr('y', cy + 15)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', 13)
-          .attr('font-weight', 700)
-          .attr('fill', color)
+          .attr('x', x + 56)
+          .attr('y', y + 78)
+          .attr('font-size', 18)
+          .attr('font-weight', 800)
+          .attr('fill', '#111f3d')
           .style('pointer-events', 'none')
-          .text(finalCompleted ? 'завершено' : this.hasRejection() ? 'отклонено' : 'ожидание');
+          .text('Финал');
+
+        nodeGroup
+          .append('rect')
+          .attr('x', x + w - 112)
+          .attr('y', y + h - 36)
+          .attr('width', 96)
+          .attr('height', 24)
+          .attr('rx', 11)
+          .attr('fill', '#121a30')
+          .style('pointer-events', 'none');
+
+        nodeGroup
+          .append('text')
+          .attr('x', x + w - 64)
+          .attr('y', y + h - 20)
+          .attr('text-anchor', 'middle')
+          .attr('font-size', 11)
+          .attr('font-weight', 700)
+          .attr('fill', '#f4f7ff')
+          .style('pointer-events', 'none')
+          .text(finalStatusText);
 
         continue;
       }
@@ -2032,30 +2144,48 @@ class DocWorkflowDemo extends LitElement {
         .attr('stroke', stroke)
         .attr('stroke-width', strokeWidth)
         .attr('filter', 'url(#card-shadow)')
-        .style('cursor', isApproval ? (selectable ? 'pointer' : 'not-allowed') : 'default')
+        .style(
+          'cursor',
+          isApproval
+            ? (selectable ? 'pointer' : 'not-allowed')
+            : isChildGroup
+              ? (canOpenChild ? 'zoom-in' : 'default')
+              : 'default'
+        )
         .style('opacity', cardOpacity)
         .on('click', () => {
           if (isApproval) {
             this.selectNode(node.id);
           }
+        })
+        .on('mouseenter', (event) => showTooltip(event, tooltipLines))
+        .on('mousemove', (event) => showTooltip(event, tooltipLines))
+        .on('mouseleave', hideTooltip)
+        .on('dblclick', () => {
+          if (canOpenChild) {
+            this.drillIntoChildWorkflow(node.id);
+          } else if (isChildGroup) {
+            this.showToast('Дочерний процесс еще не создан. Обновите прогресс через 1-2 секунды.');
+          }
         });
 
       nodeGroup
-        .append('rect')
-        .attr('x', x)
-        .attr('y', y)
-        .attr('width', w)
-        .attr('height', 6)
-        .attr('rx', 18)
-        .attr('fill', color)
+        .append('line')
+        .attr('x1', x + 12)
+        .attr('y1', y + 4)
+        .attr('x2', x + w - 12)
+        .attr('y2', y + 4)
+        .attr('stroke', color)
+        .attr('stroke-width', 6)
+        .attr('stroke-linecap', 'round')
         .style('pointer-events', 'none');
 
       nodeGroup
         .append('line')
         .attr('x1', x)
-        .attr('y1', y + 40)
+        .attr('y1', y + 44)
         .attr('x2', x + w)
-        .attr('y2', y + 40)
+        .attr('y2', y + 44)
         .attr('stroke', '#ebeff8')
         .attr('stroke-width', 1.5)
         .style('pointer-events', 'none');
@@ -2090,7 +2220,7 @@ class DocWorkflowDemo extends LitElement {
       nodeGroup
         .append('text')
         .attr('x', x + 56)
-        .attr('y', y + 28)
+        .attr('y', y + 31)
         .attr('font-size', 12)
         .attr('font-weight', 700)
         .attr('fill', '#5f6f95')
@@ -2098,11 +2228,11 @@ class DocWorkflowDemo extends LitElement {
         .text(typeLabel);
 
       const titleRaw = node.label || node.id;
-      const titleText = titleRaw.length > 30 ? `${titleRaw.slice(0, 28)}...` : titleRaw;
+      const titleText = titleRaw.length > 40 ? `${titleRaw.slice(0, 38)}...` : titleRaw;
       nodeGroup
         .append('text')
         .attr('x', x + 56)
-        .attr('y', y + 64)
+        .attr('y', y + 78)
         .attr('font-size', 16)
         .attr('font-weight', 700)
         .attr('fill', '#111f3d')
@@ -2110,13 +2240,13 @@ class DocWorkflowDemo extends LitElement {
         .text(titleText);
 
       const actorText = isApproval
-        ? (this.output?.approvals?.[node.id]?.approvedActors?.[0] || 'ожидается')
+        ? (this.getStepState(node.id)?.approval?.approvedActors?.[0] || 'ожидается')
         : 'автоматически';
       const actorPillWidth = Math.max(92, Math.min(170, actorText.length * 7 + 42));
       nodeGroup
         .append('rect')
         .attr('x', x + 56)
-        .attr('y', y + 74)
+        .attr('y', y + 92)
         .attr('width', actorPillWidth)
         .attr('height', 24)
         .attr('rx', 12)
@@ -2127,22 +2257,21 @@ class DocWorkflowDemo extends LitElement {
       nodeGroup
         .append('text')
         .attr('x', x + 69)
-        .attr('y', y + 89)
+        .attr('y', y + 107)
         .attr('font-size', 12)
         .attr('font-weight', 600)
         .attr('fill', '#243252')
         .style('pointer-events', 'none')
         .text(actorText);
 
-      const approved = this.output?.approvals?.[node.id]?.approvedActors?.length || 0;
+      const approved = this.getStepState(node.id)?.approval?.approvedActors?.length || 0;
       const required = node.k || 0;
-      const isRequired = this.isRequiredNow(node);
       const badgeText = isApproval ? `${approved}/${required}` : 'авто';
       const badgeFill = isFinal ? '#1d2a47' : '#121a30';
       nodeGroup
         .append('rect')
         .attr('x', x + w - 92)
-        .attr('y', y + h - 34)
+        .attr('y', y + h - 36)
         .attr('width', 78)
         .attr('height', 24)
         .attr('rx', 11)
@@ -2151,7 +2280,7 @@ class DocWorkflowDemo extends LitElement {
       nodeGroup
         .append('text')
         .attr('x', x + w - 53)
-        .attr('y', y + h - 18)
+        .attr('y', y + h - 20)
         .attr('text-anchor', 'middle')
         .attr('font-size', 11)
         .attr('font-weight', 700)
@@ -2160,41 +2289,26 @@ class DocWorkflowDemo extends LitElement {
         .text(badgeText);
 
       if (isApproval && node.gate) {
-        const gateStatus = this.output?.nodes?.[node.id]?.result?.gate?.status || 'WAIT';
         const gateFill = gateStatus === 'PASS' ? '#1b7f45' : gateStatus === 'FAIL' ? '#ad3232' : '#28334f';
         nodeGroup
           .append('rect')
-          .attr('x', x + w - 178)
-          .attr('y', y + h - 34)
-          .attr('width', 76)
+          .attr('x', x + w - 198)
+          .attr('y', y + h - 36)
+          .attr('width', 96)
           .attr('height', 24)
           .attr('rx', 11)
           .attr('fill', gateFill)
           .style('pointer-events', 'none');
         nodeGroup
           .append('text')
-          .attr('x', x + w - 140)
-          .attr('y', y + h - 18)
+          .attr('x', x + w - 150)
+          .attr('y', y + h - 20)
           .attr('text-anchor', 'middle')
           .attr('font-size', 11)
           .attr('font-weight', 700)
           .attr('fill', '#f4f7ff')
           .style('pointer-events', 'none')
-          .text('gate');
-      }
-
-      if (node.guard) {
-        const txt = isRequired ? 'обязательный' : 'опциональный';
-        const txtColor = isRequired ? '#c0670f' : '#6f7b99';
-        nodeGroup
-          .append('text')
-          .attr('x', x + 56)
-          .attr('y', y + h - 14)
-          .attr('font-size', 12)
-          .attr('font-weight', 700)
-          .attr('fill', txtColor)
-          .style('pointer-events', 'none')
-          .text(`условие: ${txt}`);
+          .text('контроль');
       }
     }
 
@@ -2218,6 +2332,29 @@ class DocWorkflowDemo extends LitElement {
           .scale(Math.max(0.45, Math.min(2.8, this.graphTransform.k)))
       : defaultTransform;
 
+    const clampTransform = (transform) => {
+      const k = Math.max(0.45, Math.min(2.8, transform.k || 1));
+      const margin = 22;
+      const minX = viewportWidth - worldWidth * k - margin;
+      const maxX = margin;
+      const minY = viewportHeight - worldHeight * k - margin;
+      const maxY = margin;
+
+      let x = Number(transform.x || 0);
+      let y = Number(transform.y || 0);
+      if (minX > maxX) {
+        x = (minX + maxX) / 2;
+      } else {
+        x = Math.max(minX, Math.min(maxX, x));
+      }
+      if (minY > maxY) {
+        y = (minY + maxY) / 2;
+      } else {
+        y = Math.max(minY, Math.min(maxY, y));
+      }
+      return d3.zoomIdentity.translate(x, y).scale(k);
+    };
+
     const applyVisualTransform = (transform) => {
       content.attr('transform', transform.toString());
     };
@@ -2225,6 +2362,12 @@ class DocWorkflowDemo extends LitElement {
     const zoomBehavior = d3
       .zoom()
       .scaleExtent([0.45, 2.8])
+      .filter((event) => {
+        // Разрешаем zoom колесом/трекпадом и pan перетаскиванием.
+        if (event.type === 'wheel') return true;
+        return !event.button || event.type === 'mousedown';
+      })
+      .constrain((transform) => clampTransform(transform))
       .extent([
         [0, 0],
         [viewportWidth, viewportHeight],
@@ -2234,16 +2377,17 @@ class DocWorkflowDemo extends LitElement {
         [worldWidth * 1.5, worldHeight * 1.5],
       ])
       .on('zoom', (event) => {
-        applyVisualTransform(event.transform);
+        const transform = clampTransform(event.transform);
+        applyVisualTransform(transform);
         this.graphTransform = {
-          x: event.transform.x,
-          y: event.transform.y,
-          k: event.transform.k,
+          x: transform.x,
+          y: transform.y,
+          k: transform.k,
         };
       });
 
     svg.call(zoomBehavior).on('dblclick.zoom', null);
-    svg.call(zoomBehavior.transform, savedTransform);
+    svg.call(zoomBehavior.transform, clampTransform(savedTransform));
   }
 
   // Шаблон блока с легендой и контейнером графа.
@@ -2257,7 +2401,8 @@ class DocWorkflowDemo extends LitElement {
           <span class="ok"><i></i>выполнено</span>
           <span class="err"><i></i>отклонено</span>
           <span class="skip"><i></i>пропущено/опционально</span>
-          <span>колесо: зум, перетаскивание: панорама</span>
+          <span>колесо: зум | перетаскивание: панорама</span>
+          <span>наведите на шаг: подсказка</span>
         </div>
         <div class="rules-box">
           <div class="rules-title">Ограничения сценария для тестирования</div>
@@ -2268,6 +2413,7 @@ class DocWorkflowDemo extends LitElement {
             <div class="rule-item">decline на обязательном шаге: процесс сразу отклоняется</div>
             <div class="rule-item">финансы и безопасность: идут параллельно</div>
             <div class="rule-item">следующий шаг активируется после завершения зависимостей</div>
+            <div class="rule-item">двойной клик по узлу child: открыть дочерний процесс</div>
           </div>
           <div class="hint">
             Текущая сумма: <b>${currentCost}</b> | Комитет: <b>${committeeRule}</b> | Precheck рекрутера: <b>${recruiterPrecheck}</b>
@@ -2293,6 +2439,7 @@ class DocWorkflowDemo extends LitElement {
     const actorOptions = this.availableActors;
     const approvalAvailable = this.selectedNode && this.isSelectable(this.selectedNode.id);
     const commentValid = !this.requiresComment || this.comment.trim().length > 0;
+    const navPath = [...this.navigationStack, this.workflowId].filter(Boolean).join(' -> ');
 
     return html`
       <div class="shell">
@@ -2346,7 +2493,16 @@ class DocWorkflowDemo extends LitElement {
                                       ? html`<div class="wf-children-empty">дочерние workflow отсутствуют</div>`
                                       : children.map(
                                           (child) => html`
-                                            <div class="wf-child">
+                                            <div
+                                              class="wf-child"
+                                              title="Открыть дочерний workflow"
+                                              @click=${() =>
+                                                this.pickWorkflow(child.workflowId, {
+                                                  parentWorkflowId: item.workflowId,
+                                                  preserveStack: true,
+                                                  resetToRoot: false,
+                                                })}
+                                            >
                                               <div class="wf-child-main">
                                                 <div class="wf-child-id">${child.workflowId}</div>
                                                 <div class="wf-child-node">узел: ${child.parentNodeId}</div>
@@ -2369,7 +2525,22 @@ class DocWorkflowDemo extends LitElement {
 
             <div class="main-pane">
               <section class="panel graph">
-                <h2>Граф маршрута</h2>
+                <div class="panel-head">
+                  <h2>Граф маршрута</h2>
+                  <div class="head-note">контекст: ${navPath || 'не выбран'}</div>
+                  ${this.navigationStack.length > 0
+                    ? html`
+                        <button
+                          class="secondary"
+                          style="width:auto;padding:0 12px;"
+                          ?disabled=${this.busy}
+                          @click=${() => this.goBackToParentWorkflow()}
+                        >
+                          Вернуться к родительскому
+                        </button>
+                      `
+                    : ''}
+                </div>
                 ${this.renderGraph()}
               </section>
 
@@ -2436,14 +2607,16 @@ class DocWorkflowDemo extends LitElement {
                     Отправить решение
                   </button>
                 </section>
-
-                <section class="panel">
-                  <h2>Результат</h2>
-                  ${this.renderFailureInfo()}
-                  <pre>${JSON.stringify(this.output || { hint: 'Запустите процесс или обновите прогресс' }, null, 2)}</pre>
-                </section>
               </div>
             </div>
+
+            <section class="panel result result-pane">
+              <h2>Результат</h2>
+              <div class="result-scroll">
+                ${this.renderFailureInfo()}
+                <pre>${JSON.stringify(this.outputForDisplay || { hint: 'Запустите процесс или обновите прогресс' }, null, 2)}</pre>
+              </div>
+            </section>
           </div>
         </section>
 

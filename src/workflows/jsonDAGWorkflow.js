@@ -5,7 +5,7 @@ import {
   setHandler,
   condition,
   CancellationScope,
-  executeChild,
+  startChild,
   workflowInfo,
 } from '@temporalio/workflow';
 import { evalGuard } from '../utils/guards.js';
@@ -36,7 +36,7 @@ export async function jsonDAGWorkflow(input) {
     ticketId,
     tripId,
     doc = {},
-    vars = {},
+    context = {},
     route,
     handlers = {},
   } = input;
@@ -46,8 +46,15 @@ export async function jsonDAGWorkflow(input) {
     throw new Error('route.nodes is required');
   }
 
+  // Единый runtime-контекст переменных процесса.
+  const mergedContext = {
+    ...(context || {}),
+  };
   // Контекст шаблонизации и guard-выражений.
-  const ctx = { doc, vars };
+  const ctx = {
+    doc,
+    context: mergedContext,
+  };
   // Глобальное состояние workflow, доступное из query getProgress.
   const state = {
     processType,
@@ -55,19 +62,33 @@ export async function jsonDAGWorkflow(input) {
     statusMessage: null,
     route,
     nodes: {},
-    stepParams: {},
     approvals: {},
     events: {},
-    vars,
+    context: mergedContext,
     doc,
     startedAt: new Date().toISOString(),
     completedAt: null,
   };
-  // Шина параметров шагов для использования в последующих guards/templates.
-  if (!state.vars.steps || typeof state.vars.steps !== 'object' || Array.isArray(state.vars.steps)) {
-    state.vars.steps = {};
+  // Канонические runtime-блоки в context: route/steps/history/document.
+  if (!state.context || typeof state.context !== 'object' || Array.isArray(state.context)) {
+    state.context = {};
   }
-  ctx.vars = state.vars;
+  if (!state.context.route || !Array.isArray(state.context.route?.nodes)) {
+    state.context.route = route;
+  }
+  if (!state.context.steps || typeof state.context.steps !== 'object' || Array.isArray(state.context.steps)) {
+    state.context.steps = {};
+  }
+  if (!Array.isArray(state.context.history)) {
+    state.context.history = [];
+  }
+  if (!state.context.document || typeof state.context.document !== 'object' || Array.isArray(state.context.document)) {
+    state.context.document = doc;
+  }
+  // Единый источник "документа" — context.document.
+  state.doc = state.context.document;
+  ctx.doc = state.context.document;
+  ctx.context = state.context;
 
   // Индексы для быстрого доступа к node-конфигам и зависимостям.
   const approvalConfig = {};
@@ -92,6 +113,24 @@ export async function jsonDAGWorkflow(input) {
         post: null,
       },
     };
+    state.context.steps[node.id] = {
+      id: node.id,
+      type: node.type,
+      label: node.label || node.id,
+      after: node.after || [],
+      required: node.required !== false,
+      guard: node.guard || null,
+      status: 'pending',
+      startedAt: null,
+      completedAt: null,
+      result: null,
+      error: null,
+      hooks: {
+        pre: null,
+        post: null,
+      },
+      approval: null,
+    };
     if (node.type === 'approval.kofn') {
       // Для approval узлов фиксируем K и список участников.
       approvalConfig[node.id] = {
@@ -112,6 +151,13 @@ export async function jsonDAGWorkflow(input) {
   // Текущие запущенные node-задачи и их cancellation scope.
   const running = new Map();
   const runningScopes = new Map();
+  const stepHistoryCursor = {};
+
+  // Безопасный JSON-clone для снапшотов истории.
+  function cloneJson(value) {
+    if (value === undefined) return undefined;
+    return JSON.parse(JSON.stringify(value));
+  }
 
   // Проверяет, обязателен ли approval-узел для текущего маршрута.
   function isRequiredApprovalNode(nodeId) {
@@ -145,6 +191,7 @@ export async function jsonDAGWorkflow(input) {
       gate_condition_failed: 'не пройдено gate-условие',
       approval_decision: 'получено отрицательное решение согласующего',
       step_failed: 'шаг завершился с ошибкой',
+      child_process_failed: 'дочерний процесс завершился ошибкой или отклонением',
     };
     if (map[code]) return map[code];
     return code.replace(/[_\-]+/g, ' ');
@@ -179,6 +226,13 @@ export async function jsonDAGWorkflow(input) {
           ? ` Gate: status=${gate.status ?? 'unknown'}, score=${gate.score ?? 'n/a'}, threshold=${gate.threshold ?? 'n/a'}.${gateReason}`
           : '';
       return `Процесс отклонен: не пройдено gate-условие на ${nodeText}.${gateText}`;
+    }
+
+    if (meta.reason === 'child_process_failed') {
+      const childId = meta.childWorkflowId ? ` Дочерний workflow: ${meta.childWorkflowId}.` : '';
+      const childStatus = meta.childStatus ? ` Статус child: ${meta.childStatus}.` : '';
+      const childMessage = meta.error ? ` Причина: ${meta.error}.` : '';
+      return `Процесс остановлен: дочерний процесс завершился неуспешно на ${nodeText}.${childId}${childStatus}${childMessage}`;
     }
 
     if (meta.reason === 'approval_decision' || meta.decision === 'reject') {
@@ -217,44 +271,30 @@ export async function jsonDAGWorkflow(input) {
     };
   }
 
-  // Преобразует nodeId в безопасный ключ для vars.steps.
-  function toVarKey(nodeId) {
-    return String(nodeId || '')
-      .replace(/[^a-zA-Z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .toLowerCase();
-  }
-
-  // Рендерит и записывает setVars в общий vars-контекст.
-  function applyRenderedVars(setVars, localCtx) {
+  // Рендерит и записывает setVars в единый context процесса.
+  function applyRenderedContext(setVars, localCtx) {
     if (!setVars || typeof setVars !== 'object') return;
     for (const [key, val] of Object.entries(setVars)) {
       const resolved = renderTemplate(val, localCtx);
-      state.vars[key] = resolved;
-      ctx.vars[key] = resolved;
+      state.context[key] = resolved;
+      ctx.context[key] = resolved;
     }
   }
 
-  // Фиксирует output шага в state.stepParams и vars.steps.<stepKey>.
-  function persistStepOutputs(node, nodeState, extraCtx = {}, options = {}) {
-    const { applyNodeVars = true } = options;
-    const stepKey = toVarKey(node.id);
-    const snapshot = {
-      nodeId: node.id,
-      type: node.type,
-      status: nodeState.status,
-      startedAt: nodeState.startedAt,
-      completedAt: nodeState.completedAt,
-      result: nodeState.result,
-      error: nodeState.error,
-      hooks: nodeState.hooks,
-    };
-
-    state.stepParams[node.id] = snapshot;
-    state.vars.steps[stepKey] = snapshot;
-    ctx.vars.steps = state.vars.steps;
-
-    if (applyNodeVars && node.setVars) {
+  // Применяет setVars шага в единый context (без дублирования step snapshots).
+  function syncNodeContext(node, nodeState, extraCtx = {}, options = {}) {
+    const { applyNodeContext = true } = options;
+    if (applyNodeContext && node.setVars) {
+      const snapshot = {
+        nodeId: node.id,
+        type: node.type,
+        status: nodeState.status,
+        startedAt: nodeState.startedAt,
+        completedAt: nodeState.completedAt,
+        result: nodeState.result,
+        error: nodeState.error,
+        hooks: nodeState.hooks,
+      };
       const localCtx = {
         ...ctx,
         node,
@@ -264,7 +304,38 @@ export async function jsonDAGWorkflow(input) {
         approvals: state.approvals[node.id] || null,
         ...extraCtx,
       };
-      applyRenderedVars(node.setVars, localCtx);
+      applyRenderedContext(node.setVars, localCtx);
+    }
+
+    // Единый блок шага в context.steps (definition + runtime + approval).
+    state.context.steps[node.id] = {
+      id: node.id,
+      type: node.type,
+      label: node.label || node.id,
+      after: node.after || [],
+      required: node.required !== false,
+      guard: node.guard || null,
+      status: nodeState.status,
+      startedAt: nodeState.startedAt,
+      completedAt: nodeState.completedAt,
+      result: nodeState.result,
+      error: nodeState.error,
+      hooks: nodeState.hooks,
+      approval: state.approvals[node.id] || null,
+    };
+
+    // История изменений по шагам: только при фактическом изменении статуса/времени завершения.
+    const cursor = `${nodeState.status || ''}|${nodeState.completedAt || ''}`;
+    if (stepHistoryCursor[node.id] !== cursor) {
+      stepHistoryCursor[node.id] = cursor;
+      state.context.history.push({
+        kind: 'step',
+        at: new Date().toISOString(),
+        nodeId: node.id,
+        status: nodeState.status,
+        document: cloneJson(state.context.document),
+        result: cloneJson(nodeState.result),
+      });
     }
   }
 
@@ -357,7 +428,7 @@ export async function jsonDAGWorkflow(input) {
     const normalizedDecision = normalizeApprovalDecision(decision);
     const isNegativeDecision = normalizedDecision === 'reject' || normalizedDecision === 'needs_changes';
     const trimmedComment = typeof comment === 'string' ? comment.trim() : '';
-    if (isNegativeDecision && trimmedComment.length === 0) {
+      if (isNegativeDecision && trimmedComment.length === 0) {
       state.lastSignalError = {
         type: 'approval_validation',
         message: 'comment is required for decline',
@@ -391,6 +462,17 @@ export async function jsonDAGWorkflow(input) {
       }
     }
 
+    // Обновляем канонический шаг в context.steps даже до завершения шага.
+    const node = nodeById[nodeId];
+    const nodeState = state.nodes[nodeId];
+    if (node && nodeState) {
+      state.context.steps[nodeId] = {
+        ...(state.context.steps[nodeId] || {}),
+        approval: state.approvals[nodeId] || null,
+      };
+      syncNodeContext(node, nodeState, {}, { applyNodeContext: false });
+    }
+
     signalCounter += 1;
   });
 
@@ -400,8 +482,16 @@ export async function jsonDAGWorkflow(input) {
     if (!eventName) return;
     if (eventName === 'DOC_UPDATE' && data && typeof data === 'object') {
       if (Object.prototype.hasOwnProperty.call(data, 'cost')) {
+        state.context.document.cost = data.cost;
         state.doc.cost = data.cost;
         ctx.doc.cost = data.cost;
+        state.context.history.push({
+          kind: 'doc_update',
+          at: new Date().toISOString(),
+          eventName,
+          patch: { cost: data.cost },
+          document: cloneJson(state.context.document),
+        });
         maybeReactivateGuardNodes();
       }
     }
@@ -415,9 +505,28 @@ export async function jsonDAGWorkflow(input) {
     signalCounter += 1;
   });
 
+  // Публичный state без legacy top-level route/nodes/approvals.
+  function buildPublicState() {
+    return {
+      processType: state.processType,
+      status: state.status,
+      statusMessage: state.statusMessage,
+      context: state.context,
+      startedAt: state.startedAt,
+      completedAt: state.completedAt,
+      abort: state.abort || null,
+      failure: state.failure || null,
+      lastSignalError: state.lastSignalError || null,
+      finalDecision: state.finalDecision || null,
+      reasonCode: state.reasonCode || null,
+      failedNodeId: state.failedNodeId || null,
+      failedNodeLabel: state.failedNodeLabel || null,
+    };
+  }
+
   // Query прогресса процесса для API/UI.
   const getProgressQuery = defineQuery('getProgress');
-  setHandler(getProgressQuery, () => state);
+  setHandler(getProgressQuery, () => buildPublicState());
 
   // Резолвит базовый URL handlers app по типу процесса/узла.
   function resolveBaseUrl(appName, node) {
@@ -533,7 +642,7 @@ export async function jsonDAGWorkflow(input) {
 
     if (abortReason) {
       markSkipped(nodeState, abortReason);
-      persistStepOutputs(node, nodeState, { abortReason }, { applyNodeVars: false });
+      syncNodeContext(node, nodeState, { abortReason }, { applyNodeContext: false });
       return;
     }
 
@@ -542,12 +651,12 @@ export async function jsonDAGWorkflow(input) {
       nodeState.status = 'skipped';
       nodeState.completedAt = new Date().toISOString();
       nodeState.result = { skipped: true, reason: 'guard_false' };
-      persistStepOutputs(node, nodeState, { guardMatched: false });
+      syncNodeContext(node, nodeState, { guardMatched: false });
       nodeState.hooks.post = await executeNodeHook(node, nodeState, 'post', node.post, {
         stepStatus: 'skipped',
         stepOutcome: 'guard_false',
       });
-      persistStepOutputs(node, nodeState, { guardMatched: false }, { applyNodeVars: false });
+      syncNodeContext(node, nodeState, { guardMatched: false }, { applyNodeContext: false });
       return;
     }
 
@@ -695,7 +804,7 @@ export async function jsonDAGWorkflow(input) {
             };
 
             if (gateCfg.setVars) {
-              applyRenderedVars(gateCfg.setVars, gateCtx);
+              applyRenderedContext(gateCfg.setVars, gateCtx);
             }
 
             if (!passed && gateRequired) {
@@ -777,12 +886,61 @@ export async function jsonDAGWorkflow(input) {
             throw new Error(`child.start requires workflowType for node ${node.id}`);
           }
           const childWorkflowId = `${workflowInfo().workflowId}-${node.id}`;
-          const result = await executeChild(workflowType, {
+          const childHandle = await startChild(workflowType, {
             args: [childInput],
             workflowId: childWorkflowId,
           });
-          nodeState.result = { result, childWorkflowId };
-          stepExtraCtx = { child: { workflowId: childWorkflowId, result } };
+          // Публикуем childWorkflowId сразу, чтобы UI мог открыть дочерний процесс до его завершения.
+          nodeState.result = {
+            childWorkflowId,
+            childStatus: 'running',
+          };
+          stepExtraCtx = {
+            child: {
+              workflowId: childWorkflowId,
+              status: 'running',
+            },
+          };
+          syncNodeContext(node, nodeState, stepExtraCtx, { applyNodeContext: false });
+
+          const result = await childHandle.result();
+          const childStatus = String(result?.status || '').toLowerCase();
+          const childFailed =
+            childStatus === 'failed' ||
+            childStatus === 'rejected' ||
+            childStatus === 'needs_changes' ||
+            childStatus === 'terminated' ||
+            childStatus === 'timed_out' ||
+            childStatus === 'canceled';
+          nodeState.result = {
+            result,
+            childWorkflowId,
+            childStatus: childStatus || 'completed',
+            outcome: childFailed ? 'rejected' : 'approved',
+          };
+          stepExtraCtx = {
+            child: {
+              workflowId: childWorkflowId,
+              result,
+              status: childStatus || 'completed',
+            },
+          };
+
+          const enforceChildSuccess = node.enforceChildSuccess !== false;
+          const requiredNode = node.required !== false;
+          if (childFailed && enforceChildSuccess && requiredNode) {
+            abortWorkflow(childStatus === 'failed' ? 'failed' : 'rejected', {
+              nodeId: node.id,
+              reason: 'child_process_failed',
+              childWorkflowId,
+              childStatus,
+              error:
+                result?.statusMessage ||
+                result?.failure?.error ||
+                result?.abort?.message ||
+                null,
+            });
+          }
           break;
         }
         default:
@@ -794,7 +952,7 @@ export async function jsonDAGWorkflow(input) {
       }
 
       // Сохраняем параметры шага до post-hook, чтобы следующие шаги могли их использовать.
-      persistStepOutputs(node, nodeState, stepExtraCtx);
+      syncNodeContext(node, nodeState, stepExtraCtx);
 
       // Затем post-hook.
       nodeState.hooks.post = await executeNodeHook(node, nodeState, 'post', node.post, {
@@ -802,7 +960,7 @@ export async function jsonDAGWorkflow(input) {
         stepOutcome: nodeState.result?.outcome || null,
       });
       // Обновляем snapshot после post-hook без повторного setVars.
-      persistStepOutputs(node, nodeState, stepExtraCtx, { applyNodeVars: false });
+      syncNodeContext(node, nodeState, stepExtraCtx, { applyNodeContext: false });
     } catch (err) {
       if (abortReason) {
         markSkipped(nodeState, abortReason);
@@ -810,7 +968,7 @@ export async function jsonDAGWorkflow(input) {
           stepStatus: nodeState.status,
           stepOutcome: abortReason,
         });
-        persistStepOutputs(node, nodeState, { abortReason }, { applyNodeVars: false });
+        syncNodeContext(node, nodeState, { abortReason }, { applyNodeContext: false });
         return;
       }
 
@@ -833,12 +991,12 @@ export async function jsonDAGWorkflow(input) {
         stepStatus: 'failed',
         stepOutcome: 'failed',
       });
-      persistStepOutputs(node, nodeState, {}, { applyNodeVars: false });
+      syncNodeContext(node, nodeState, {}, { applyNodeContext: false });
       return;
     } finally {
       // Фиксируем время завершения шага в любом исходе.
       nodeState.completedAt = new Date().toISOString();
-      persistStepOutputs(node, nodeState, {}, { applyNodeVars: false });
+      syncNodeContext(node, nodeState, {}, { applyNodeContext: false });
     }
   }
 
@@ -893,6 +1051,6 @@ export async function jsonDAGWorkflow(input) {
     state.statusMessage = buildStatusMessage(state.status, state.abort || {});
   }
   state.completedAt = new Date().toISOString();
-  // Возвращаем полный state как результат workflow.
-  return state;
+  // Возвращаем только каноничный публичный state.
+  return buildPublicState();
 }

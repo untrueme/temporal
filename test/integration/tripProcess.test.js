@@ -28,7 +28,7 @@ const makeRoute = (endDateIso, reportDelayMs) => ({
       type: 'child.start',
       workflowType: 'ticketPurchase',
       input: {
-        baseUrl: '{{vars.tripHandlers}}',
+        baseUrl: '{{context.tripHandlers}}',
         tripId: '{{doc.tripId}}',
       },
       guard: {
@@ -43,7 +43,7 @@ const makeRoute = (endDateIso, reportDelayMs) => ({
       type: 'child.start',
       workflowType: 'hotelBooking',
       input: {
-        baseUrl: '{{vars.tripHandlers}}',
+        baseUrl: '{{context.tripHandlers}}',
         tripId: '{{doc.tripId}}',
       },
       guard: {
@@ -58,7 +58,7 @@ const makeRoute = (endDateIso, reportDelayMs) => ({
       type: 'child.start',
       workflowType: 'perDiemPayout',
       input: {
-        baseUrl: '{{vars.tripHandlers}}',
+        baseUrl: '{{context.tripHandlers}}',
         tripId: '{{doc.tripId}}',
       },
       guard: {
@@ -103,7 +103,7 @@ const makeRoute = (endDateIso, reportDelayMs) => ({
       action: 'report.escalate',
       guard: {
         op: 'ne',
-        left: { path: 'vars.reportSubmitted' },
+        left: { path: 'context.reportSubmitted' },
         right: true,
       },
       after: ['report.delay'],
@@ -142,7 +142,7 @@ test('trip process skips finance when budget <= 1000 and runs child workflows', 
         needHotel: false,
         needPerDiem: true,
       },
-      vars: { reportSubmitted: false },
+      context: { reportSubmitted: false },
       route,
     }),
   });
@@ -158,15 +158,18 @@ test('trip process skips finance when budget <= 1000 and runs child workflows', 
   const progress = await poll(async () => {
     const res = await fetch(`${runtime.apiUrl}/process/${workflowId}/progress`);
     const data = await res.json();
-    if (data.nodes['child.ticket']?.status === 'done' && data.nodes['child.perdiem']?.status === 'done') {
+    if (
+      data.context?.steps?.['child.ticket']?.status === 'done' &&
+      data.context?.steps?.['child.perdiem']?.status === 'done'
+    ) {
       return data;
     }
     return null;
   }, { timeoutMs: 8000, intervalMs: 200 });
 
-  assert.equal(progress.nodes['finance.approval'].status, 'skipped');
-  assert.equal(progress.nodes['child.ticket'].status, 'done');
-  assert.equal(progress.nodes['child.perdiem'].status, 'done');
+  assert.equal(progress.context.steps['finance.approval'].status, 'skipped');
+  assert.equal(progress.context.steps['child.ticket'].status, 'done');
+  assert.equal(progress.context.steps['child.perdiem'].status, 'done');
 
   await fetch(`${runtime.apiUrl}/process/${workflowId}/event`, {
     method: 'POST',
@@ -177,11 +180,11 @@ test('trip process skips finance when budget <= 1000 and runs child workflows', 
   const finalProgress = await poll(async () => {
     const res = await fetch(`${runtime.apiUrl}/process/${workflowId}/progress`);
     const data = await res.json();
-    if (data.nodes['trip.close']?.status === 'done') return data;
+    if (data.context?.steps?.['trip.close']?.status === 'done') return data;
     return null;
   }, { timeoutMs: 8000, intervalMs: 200 });
 
-  assert.equal(finalProgress.nodes['trip.close'].status, 'done');
+  assert.equal(finalProgress.context.steps['trip.close'].status, 'done');
 });
 
 test('trip process escalates when report not submitted', async () => {
@@ -200,7 +203,7 @@ test('trip process escalates when report not submitted', async () => {
         needHotel: false,
         needPerDiem: false,
       },
-      vars: { reportSubmitted: false },
+      context: { reportSubmitted: false },
       route,
     }),
   });
@@ -216,13 +219,13 @@ test('trip process escalates when report not submitted', async () => {
   const progress = await poll(async () => {
     const res = await fetch(`${runtime.apiUrl}/process/${workflowId}/progress`);
     const data = await res.json();
-    if (data.nodes['report.escalate']?.status === 'done') {
+    if (data.context?.steps?.['report.escalate']?.status === 'done') {
       return data;
     }
     return null;
   }, { timeoutMs: 8000, intervalMs: 200 });
 
-  assert.equal(progress.nodes['report.escalate'].status, 'done');
+  assert.equal(progress.context.steps['report.escalate'].status, 'done');
 
   await fetch(`${runtime.apiUrl}/process/${workflowId}/event`, {
     method: 'POST',
@@ -233,9 +236,9 @@ test('trip process escalates when report not submitted', async () => {
   const finalProgress = await poll(async () => {
     const res = await fetch(`${runtime.apiUrl}/process/${workflowId}/progress`);
     const data = await res.json();
-    if (data.nodes['trip.close']?.status === 'done') return data;
+    if (data.context?.steps?.['trip.close']?.status === 'done') return data;
     return null;
   }, { timeoutMs: 8000, intervalMs: 200 });
 
-  assert.equal(finalProgress.nodes['trip.close'].status, 'done');
+  assert.equal(finalProgress.context.steps['trip.close'].status, 'done');
 });

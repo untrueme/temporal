@@ -96,14 +96,14 @@ test('doc workflow skips finance when cost <= 100', async () => {
   const progress = await poll(async () => {
     const res = await fetch(`${runtime.apiUrl}/workflows/doc/${workflowId}/progress`);
     const data = await res.json();
-    if (data.nodes.notify?.status === 'done') {
+    if (data.context?.steps?.notify?.status === 'done') {
       return data;
     }
     return null;
   });
 
-  assert.equal(progress.nodes['finance.check'].status, 'skipped');
-  assert.equal(progress.nodes.notify.status, 'done');
+  assert.equal(progress.context.steps['finance.check'].status, 'skipped');
+  assert.equal(progress.context.steps.notify.status, 'done');
 });
 
 test('doc workflow runs finance when cost > 100', async () => {
@@ -139,14 +139,14 @@ test('doc workflow runs finance when cost > 100', async () => {
   const progress = await poll(async () => {
     const res = await fetch(`${runtime.apiUrl}/workflows/doc/${workflowId}/progress`);
     const data = await res.json();
-    if (data.nodes.notify?.status === 'done') {
+    if (data.context?.steps?.notify?.status === 'done') {
       return data;
     }
     return null;
   });
 
-  assert.equal(progress.nodes['finance.check'].status, 'done');
-  assert.equal(progress.nodes['finance.approval'].status, 'done');
+  assert.equal(progress.context.steps['finance.check'].status, 'done');
+  assert.equal(progress.context.steps['finance.approval'].status, 'done');
 });
 
 test('doc workflow stops on decline', async () => {
@@ -182,7 +182,7 @@ test('doc workflow stops on decline', async () => {
   }, { timeoutMs: 6000, intervalMs: 200 });
 
   assert.equal(progress.status, 'rejected');
-  assert.notEqual(progress.nodes.notify?.status, 'done');
+  assert.notEqual(progress.context?.steps?.notify?.status, 'done');
 });
 
 test('doc workflow continues when decline is on non-required approval', async () => {
@@ -254,14 +254,14 @@ test('doc workflow continues when decline is on non-required approval', async ()
   const progress = await poll(async () => {
     const res = await fetch(`${runtime.apiUrl}/workflows/doc/${workflowId}/progress`);
     const data = await res.json();
-    if (data.nodes.notify?.status === 'done') {
+    if (data.context?.steps?.notify?.status === 'done') {
       return data;
     }
     return null;
   }, { timeoutMs: 6000, intervalMs: 200 });
 
   assert.equal(progress.status, 'completed');
-  assert.equal(progress.nodes['optional.approval'].status, 'done');
-  assert.equal(progress.nodes['optional.approval'].result?.outcome, 'rejected');
-  assert.equal(progress.nodes.notify.status, 'done');
+  assert.equal(progress.context.steps['optional.approval'].status, 'done');
+  assert.equal(progress.context.steps['optional.approval'].result?.outcome, 'rejected');
+  assert.equal(progress.context.steps.notify.status, 'done');
 });

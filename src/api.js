@@ -193,15 +193,15 @@ export async function buildApi() {
       const handlers = buildHandlersConfig();
 
       // Входные данные для jsonDAGWorkflow.
-      const vars = {
-        ...(body.vars || {}),
+      const context = {
+        ...(body.context || {}),
         docHandlers: handlers.doc,
       };
       const input = {
         processType: 'doc',
         docId,
         doc: body.doc || {},
-        vars,
+        context,
         route: body.route,
         handlers,
       };
@@ -224,6 +224,38 @@ export async function buildApi() {
     try {
       const limitRaw = Number(req.query?.limit ?? 50);
       const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(1, limitRaw), 200) : 50;
+      // Для закрытых execution вытаскиваем бизнес-статус из результата workflow.
+      const enrichWithBusinessStatus = async (items) => {
+        return Promise.all(
+          (items || []).map(async (item) => {
+            const temporalStatus = String(item?.status || '').toLowerCase();
+            if (temporalStatus !== 'completed') {
+              return item;
+            }
+            try {
+              const handle = client.workflow.getHandle(item.workflowId);
+              const result = await handle.result();
+              const businessStatus = String(result?.status || '').toLowerCase();
+              if (!businessStatus || businessStatus === 'completed') {
+                return {
+                  ...item,
+                  temporalStatus,
+                  businessStatus: businessStatus || temporalStatus,
+                };
+              }
+              return {
+                ...item,
+                temporalStatus,
+                businessStatus,
+                status: businessStatus,
+                statusName: businessStatus.toUpperCase(),
+              };
+            } catch {
+              return item;
+            }
+          })
+        );
+      };
 
       try {
         // Основной способ: visibility query по workflow type/id.
@@ -244,7 +276,8 @@ export async function buildApi() {
         }
 
         if (visibilityItems.length > 0) {
-          reply.send({ items: visibilityItems });
+          const enriched = await enrichWithBusinessStatus(visibilityItems);
+          reply.send({ items: enriched });
           return;
         }
       } catch (visibilityError) {
@@ -285,7 +318,8 @@ export async function buildApi() {
         })
       );
 
-      reply.send({ items: fallbackItems });
+      const enrichedFallback = await enrichWithBusinessStatus(fallbackItems);
+      reply.send({ items: enrichedFallback });
     } catch (error) {
       sendTemporalError(reply, error);
     }
@@ -416,8 +450,8 @@ export async function buildApi() {
     const tripId = body.tripId || globalThis.crypto.randomUUID();
     const handlers = buildHandlersConfig();
 
-    const vars = {
-      ...(body.vars || {}),
+    const context = {
+      ...(body.context || {}),
       tripHandlers: handlers.trip,
     };
 
@@ -425,7 +459,7 @@ export async function buildApi() {
       processType: 'trip',
       tripId,
       doc: body.doc || {},
-      vars,
+      context,
       route: body.route,
       handlers,
     };
