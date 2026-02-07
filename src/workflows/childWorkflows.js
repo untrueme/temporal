@@ -10,17 +10,28 @@ async function runChildTask(input, defaultAction, nodeId) {
   // Нормализуем вход.
   const {
     baseUrl,
+    docId,
+    ticketId,
     tripId,
+    candidateId,
     payload = {},
     action = defaultAction,
   } = input || {};
+  const resolvedDocId = docId || candidateId;
 
   // Выполняем вызов handlers app с корреляцией.
   return callHttpHandler({
     baseUrl,
     action,
-    payload: { ...payload, tripId, nodeId },
-    correlation: { tripId, nodeId },
+    payload: {
+      ...payload,
+      docId: resolvedDocId,
+      ticketId,
+      tripId,
+      candidateId,
+      nodeId,
+    },
+    correlation: { docId: resolvedDocId, ticketId, tripId, nodeId },
   });
 }
 
@@ -37,4 +48,14 @@ export async function ticketPurchase(input) {
 // Child workflow для бронирования отеля.
 export async function hotelBooking(input) {
   return runChildTask(input, 'hotel.task.create', 'hotelBooking');
+}
+
+// Child workflow для предварительной финпроверки кандидата.
+export async function candidateFinanceCheck(input) {
+  return runChildTask(input, 'candidate.finance.precheck', 'candidateFinanceCheck');
+}
+
+// Child workflow для проверки кандидата службой безопасности.
+export async function candidateSecurityCheck(input) {
+  return runChildTask(input, 'candidate.security.precheck', 'candidateSecurityCheck');
 }

@@ -17,11 +17,11 @@
 
 ## Архитектура
 - **Temporal Worker**: исполняет workflow и activities. Файл `src/worker.js`.
-- **Fastify API**: старт workflow, сигналы, queries. Файл `src/api.js`.
-- **Handlers App**: реальные HTTP endpoints, вызываемые из Activities. Файл `src/handlersApp.js`.
+- **Fastify API**: старт workflow, сигналы, queries и встроенные handlers endpoints. Файл `src/api.js`.
+- **Standalone Handlers App (optional)**: отдельный процесс с теми же handlers endpoint-ами. Файл `src/handlersApp.js`.
 - **Utilities**: guard DSL, template rendering, DAG readiness, idempotency. Папка `src/utils`.
 
-Handlers App endpoints:
+Handlers endpoints (в API и в optional standalone handlers app):
 - `POST /handlers/:action` (документооборот)
 - `POST /sd/:action` (service desk)
 - `POST /trip/:action` (командировки)
@@ -40,19 +40,13 @@ npm install
 npm run worker
 ```
 
-4. Запустите handlers app (по умолчанию порт 4001):
-
-```bash
-npm run handlers
-```
-
-5. Запустите API (по умолчанию порт 3000):
+4. Запустите API (по умолчанию порт 3000):
 
 ```bash
 npm run api
 ```
 
-6. Откройте demo UI:
+5. Откройте demo UI:
 
 ```bash
 open http://localhost:3000/ui
@@ -63,10 +57,17 @@ open http://localhost:3000/ui
 - `TEMPORAL_NAMESPACE` (по умолчанию `default`)
 - `TASK_QUEUE` (по умолчанию `temportal`)
 - `PORT` (API, по умолчанию `3000`)
-- `HANDLERS_PORT` (handlers app, по умолчанию `4001`)
-- `APP_URL` (base URL для doc handlers, по умолчанию `http://localhost:${HANDLERS_PORT}/handlers`)
-- `SD_APP_URL` (base URL для service desk handlers, по умолчанию `http://localhost:${HANDLERS_PORT}/sd`)
-- `TRIP_APP_URL` (base URL для trip handlers, по умолчанию `http://localhost:${HANDLERS_PORT}/trip`)
+- `API_BASE_URL` (опционально; base URL API для встроенных handlers, по умолчанию `http://localhost:${PORT}`)
+- `APP_URL` (base URL для doc handlers, по умолчанию `${API_BASE_URL}/handlers`)
+- `SD_APP_URL` (base URL для service desk handlers, по умолчанию `${API_BASE_URL}/sd`)
+- `TRIP_APP_URL` (base URL для trip handlers, по умолчанию `${API_BASE_URL}/trip`)
+- `HANDLERS_PORT` (только для standalone режима `npm run handlers`, по умолчанию `4001`)
+
+Standalone handlers app (опционально):
+```bash
+npm run handlers
+```
+Если запускаете handlers отдельно, задайте `APP_URL`/`SD_APP_URL`/`TRIP_APP_URL` в API.
 
 ## Temporal UI
 Запуск UI через Docker (если UI отдельно от сервера):

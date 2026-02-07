@@ -16,6 +16,7 @@ class DocWorkflowDemo extends LitElement {
     selectedNodeId: { type: String },
     output: { state: true },
     workflowItems: { state: true },
+    workflowChildren: { state: true },
     toasts: { state: true },
     errorText: { state: true },
     busy: { state: true },
@@ -77,11 +78,12 @@ class DocWorkflowDemo extends LitElement {
     }
 
     .grid {
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 12px;
       padding: 14px;
       flex: 1;
-      overflow: auto;
+      overflow: hidden;
     }
 
     .control-row {
@@ -109,34 +111,51 @@ class DocWorkflowDemo extends LitElement {
     }
 
     .panel.graph {
-      grid-column: 1 / -1;
       padding: 10px;
     }
 
     .workspace-row {
-      grid-column: 1 / -1;
       display: flex;
       gap: 12px;
       align-items: stretch;
       min-width: 0;
+      min-height: 0;
+      flex: 1;
+    }
+
+    .main-pane {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow: hidden;
     }
 
     .workflows-panel {
-      width: 280px;
-      min-width: 250px;
-      max-width: 320px;
+      width: 320px;
+      min-width: 300px;
+      max-width: 360px;
       display: flex;
       flex-direction: column;
       gap: 8px;
+      min-height: 0;
     }
 
     .workflows-list {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      max-height: 370px;
+      flex: 1;
+      min-height: 0;
       overflow: auto;
       padding-right: 2px;
+    }
+
+    .wf-tree {
+      display: grid;
+      gap: 6px;
     }
 
     .wf-item {
@@ -186,6 +205,53 @@ class DocWorkflowDemo extends LitElement {
       line-height: 1.1;
     }
 
+    .wf-children {
+      margin-left: 16px;
+      border-left: 2px solid rgba(95, 117, 170, 0.25);
+      padding-left: 10px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .wf-child {
+      min-height: 32px;
+      border: 1px solid rgba(142, 157, 193, 0.34);
+      border-radius: 9px;
+      background: #f6f8fe;
+      padding: 6px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.74rem;
+      color: #2a3a60;
+    }
+
+    .wf-child-main {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+
+    .wf-child-id {
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 198px;
+    }
+
+    .wf-child-node {
+      font-size: 0.69rem;
+      color: #60709a;
+    }
+
+    .wf-children-empty {
+      font-size: 0.72rem;
+      color: #67779f;
+      padding: 3px 0 2px;
+    }
+
     .wf-status {
       display: inline-flex;
       align-items: center;
@@ -225,6 +291,19 @@ class DocWorkflowDemo extends LitElement {
     .wf-status.continued_as_new,
     .wf-status.unknown,
     .wf-status.not_found {
+      background: #eef2fb;
+      color: #5a6788;
+      border-color: #d0d8ec;
+    }
+
+    .wf-status.done {
+      background: #e2f8ea;
+      color: #1f8248;
+      border-color: #a7e2be;
+    }
+
+    .wf-status.skipped,
+    .wf-status.pending {
       background: #eef2fb;
       color: #5a6788;
       border-color: #d0d8ec;
@@ -315,14 +394,16 @@ class DocWorkflowDemo extends LitElement {
       border: 1px dashed rgba(62, 86, 140, 0.32);
       background: #f8f9ff;
       padding: 8px;
-      overflow-x: auto;
-      overflow-y: hidden;
+      overflow: auto;
+      overscroll-behavior: contain;
+      height: clamp(360px, 52vh, 620px);
+      max-height: 620px;
       scrollbar-width: thin;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(36, 58, 102, 0.08);
     }
 
     #graph {
-      min-height: 540px;
+      min-height: 100%;
       width: max-content;
     }
 
@@ -449,6 +530,7 @@ class DocWorkflowDemo extends LitElement {
       .workflows-panel {
         width: 100%;
         max-width: none;
+        min-width: 0;
       }
 
       .control-row {
@@ -464,17 +546,18 @@ class DocWorkflowDemo extends LitElement {
   // Инициализация дефолтных значений формы/состояния UI.
   constructor() {
     super();
-    this.docId = 'demo-doc-001';
-    this.title = 'Contract approval';
-    this.cost = 120;
+    this.docId = 'cand-001';
+    this.title = 'Иван Петров';
+    this.cost = 140;
     this.workflowId = '';
     this.actor = '';
     this.decision = 'accept';
     this.comment = '';
-    this.nodeId = 'legal.approval';
-    this.selectedNodeId = 'legal.approval';
+    this.nodeId = 'recruiter.approval';
+    this.selectedNodeId = 'recruiter.approval';
     this.output = null;
     this.workflowItems = [];
+    this.workflowChildren = {};
     this.toasts = [];
     this.errorText = '';
     this.busy = false;
@@ -490,8 +573,8 @@ class DocWorkflowDemo extends LitElement {
   // Доступные варианты decision (сокращены до accept/decline).
   get decisions() {
     return [
-      { value: 'accept', label: 'Accept' },
-      { value: 'decline', label: 'Decline' },
+      { value: 'accept', label: 'Принять' },
+      { value: 'decline', label: 'Отклонить' },
     ];
   }
 
@@ -500,26 +583,27 @@ class DocWorkflowDemo extends LitElement {
     return this.decision === 'decline';
   }
 
-  // Демо-маршрут документа с pre/post hooks и динамическим guard.
+  // Демо-маршрут согласования кандидата (с child workflow и динамическим шагом).
   get route() {
     return {
       nodes: [
         {
-          id: 'intake.normalize',
+          id: 'candidate.intake',
           type: 'handler.http',
-          label: 'Normalize draft',
+          label: 'Регистрация кандидата',
           app: 'doc',
-          action: 'intake.normalize',
+          action: 'candidate.intake',
           payload: {
-            title: '{{doc.title}}',
-            cost: '{{doc.cost}}',
+            candidateName: '{{doc.title}}',
+            salary: '{{doc.cost}}',
+            candidateId: '{{doc.candidateId}}',
           },
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
             payload: {
-              check: 'schema_and_acl',
-              step: 'intake.normalize',
+              check: 'candidate_profile',
+              step: 'candidate.intake',
             },
           },
           post: {
@@ -527,33 +611,33 @@ class DocWorkflowDemo extends LitElement {
             action: 'kafka.snapshot',
             payload: {
               topic: 'doc.history.snapshots',
-              step: 'intake.normalize',
-              title: '{{doc.title}}',
-              cost: '{{doc.cost}}',
+              step: 'candidate.intake',
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
             },
           },
         },
         {
-          id: 'legal.approval',
+          id: 'recruiter.approval',
           type: 'approval.kofn',
-          label: 'Legal approval',
-          members: ['alice', 'bob', 'carol'],
+          label: 'Согласование рекрутеров',
+          members: ['Анна', 'Борис', 'Ирина'],
           k: 2,
           required: true,
-          after: ['intake.normalize'],
+          after: ['candidate.intake'],
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
             payload: {
-              check: 'legal_gate',
-              step: 'legal.approval',
+              check: 'recruiter_gate',
+              step: 'recruiter.approval',
             },
           },
           gate: {
             app: 'doc',
-            action: 'gate.legal.score',
+            action: 'gate.recruiter.score',
             payload: {
-              stage: 'legal',
+              stage: 'recruiter',
               cost: '{{doc.cost}}',
               approvalsRequired: 2,
             },
@@ -569,24 +653,30 @@ class DocWorkflowDemo extends LitElement {
             action: 'kafka.snapshot',
             payload: {
               topic: 'doc.history.snapshots',
-              step: 'legal.approval',
+              step: 'recruiter.approval',
             },
           },
         },
         {
-          id: 'security.approval',
-          type: 'approval.kofn',
-          label: 'Security approval',
-          members: ['sec1', 'sec2'],
-          k: 1,
-          required: true,
-          after: ['legal.approval'],
+          id: 'finance.precheck',
+          type: 'child.start',
+          label: 'Финансовый скоринг (дочерний)',
+          workflowType: 'candidateFinanceCheck',
+          after: ['recruiter.approval'],
+          input: {
+            baseUrl: '{{vars.docHandlers}}',
+            docId: '{{doc.candidateId}}',
+            payload: {
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
+            },
+          },
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
             payload: {
-              check: 'security_gate',
-              step: 'security.approval',
+              check: 'finance_precheck',
+              step: 'finance.precheck',
             },
           },
           post: {
@@ -594,24 +684,30 @@ class DocWorkflowDemo extends LitElement {
             action: 'kafka.snapshot',
             payload: {
               topic: 'doc.history.snapshots',
-              step: 'security.approval',
+              step: 'finance.precheck',
             },
           },
         },
         {
-          id: 'procurement.approval',
-          type: 'approval.kofn',
-          label: 'Procurement approval',
-          members: ['proc1', 'proc2'],
-          k: 1,
-          required: true,
-          after: ['legal.approval'],
+          id: 'security.precheck',
+          type: 'child.start',
+          label: 'Проверка безопасности (дочерний)',
+          workflowType: 'candidateSecurityCheck',
+          after: ['recruiter.approval'],
+          input: {
+            baseUrl: '{{vars.docHandlers}}',
+            docId: '{{doc.candidateId}}',
+            payload: {
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
+            },
+          },
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
             payload: {
-              check: 'procurement_gate',
-              step: 'procurement.approval',
+              check: 'security_precheck',
+              step: 'security.precheck',
             },
           },
           post: {
@@ -619,19 +715,18 @@ class DocWorkflowDemo extends LitElement {
             action: 'kafka.snapshot',
             payload: {
               topic: 'doc.history.snapshots',
-              step: 'procurement.approval',
+              step: 'security.precheck',
             },
           },
         },
         {
           id: 'finance.approval',
           type: 'approval.kofn',
-          label: 'Finance approval',
-          members: ['fin1', 'fin2', 'cfo'],
-          k: 2,
+          label: 'Согласование финансистов',
+          members: ['Финансист 1', 'Финансист 2'],
+          k: 1,
           required: true,
-          after: ['security.approval', 'procurement.approval'],
-          guard: { op: 'gte', left: { path: 'doc.cost' }, right: 150 },
+          after: ['finance.precheck'],
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
@@ -665,13 +760,38 @@ class DocWorkflowDemo extends LitElement {
           },
         },
         {
-          id: 'director.approval',
+          id: 'security.approval',
           type: 'approval.kofn',
-          label: 'Director approval',
-          members: ['director1', 'director2'],
+          label: 'Согласование службы безопасности',
+          members: ['СБ 1', 'СБ 2'],
           k: 1,
           required: true,
-          after: ['finance.approval'],
+          after: ['security.precheck'],
+          pre: {
+            app: 'doc',
+            action: 'pre.policy.check',
+            payload: {
+              check: 'security_gate',
+              step: 'security.approval',
+            },
+          },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'doc.history.snapshots',
+              step: 'security.approval',
+            },
+          },
+        },
+        {
+          id: 'director.approval',
+          type: 'approval.kofn',
+          label: 'Согласование директора',
+          members: ['Директор 1', 'Директор 2'],
+          k: 1,
+          required: true,
+          after: ['finance.approval', 'security.approval'],
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
@@ -690,12 +810,38 @@ class DocWorkflowDemo extends LitElement {
           },
         },
         {
+          id: 'comp.committee',
+          type: 'approval.kofn',
+          label: 'Комитет по компенсациям',
+          members: ['HRBP', 'CFO'],
+          k: 1,
+          required: true,
+          after: ['director.approval'],
+          guard: { op: 'gte', left: { path: 'doc.cost' }, right: 150 },
+          pre: {
+            app: 'doc',
+            action: 'pre.policy.check',
+            payload: {
+              check: 'compensation_committee',
+              step: 'comp.committee',
+            },
+          },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'doc.history.snapshots',
+              step: 'comp.committee',
+            },
+          },
+        },
+        {
           id: 'notify',
           type: 'handler.http',
-          label: 'Publish + notify',
+          label: 'Финальное решение и оффер',
           app: 'doc',
-          action: 'notify.publish',
-          after: ['director.approval'],
+          action: 'candidate.offer.publish',
+          after: ['comp.committee'],
           pre: {
             app: 'doc',
             action: 'pre.policy.check',
@@ -909,20 +1055,20 @@ class DocWorkflowDemo extends LitElement {
     const normalized = msg.toLowerCase();
 
     if (normalized.includes('workflow execution already completed')) {
-      return 'Workflow is already completed. Select a running workflow from the list on the left.';
+      return 'Workflow уже завершен. Выберите активный процесс в списке слева.';
     }
     if (normalized.includes('workflow not found')) {
-      return 'Workflow not found. Refresh the list and choose an existing workflow.';
+      return 'Workflow не найден. Обновите список и выберите существующий запуск.';
     }
     if (normalized.includes('comment is required for decline')) {
-      return 'Comment is required for decline decision.';
+      return 'Для решения "Отклонить" нужно указать комментарий с причиной.';
     }
     if (
       normalized.includes('failed to query workflow') ||
       normalized.includes('did not register a handler for getprogress') ||
       normalized.includes('progress query is not available')
     ) {
-      return 'Workflow progress is temporarily unavailable. Wait 1-2 seconds and query again.';
+      return 'Прогресс временно недоступен. Подождите 1-2 секунды и повторите запрос.';
     }
     return msg;
   }
@@ -947,6 +1093,7 @@ class DocWorkflowDemo extends LitElement {
     try {
       const data = await this.request('/workflows/doc/list?limit=50');
       this.workflowItems = Array.isArray(data?.items) ? data.items : [];
+      await this.hydrateWorkflowChildren(this.workflowItems);
     } catch (error) {
       if (!silent) {
         const message = this.formatErrorMessage(error);
@@ -966,6 +1113,7 @@ class DocWorkflowDemo extends LitElement {
         const data = await this.request(`/workflows/doc/${id}/progress`);
         this.workflowId = id;
         this.output = data;
+        this.cacheWorkflowChildren(id, data);
         if (data?.doc?.cost !== undefined) {
           this.cost = Number(data.doc.cost);
         }
@@ -989,7 +1137,7 @@ class DocWorkflowDemo extends LitElement {
     await this.run(async () => {
       const payload = {
         docId: this.docId,
-        doc: { title: this.title, cost: Number(this.cost) },
+        doc: { title: this.title, cost: Number(this.cost), candidateId: this.docId },
         route: this.route,
       };
       const data = await this.request('/workflows/doc/start', {
@@ -1069,6 +1217,90 @@ class DocWorkflowDemo extends LitElement {
     return d.toLocaleString();
   }
 
+  // Извлекает дочерние workflow из node result.
+  extractChildWorkflows(progress) {
+    const nodes = progress?.nodes || {};
+    const children = [];
+    const seen = new Set();
+
+    for (const [nodeId, nodeState] of Object.entries(nodes)) {
+      const candidateIds = [];
+      if (nodeState?.result?.childWorkflowId) {
+        candidateIds.push(nodeState.result.childWorkflowId);
+      }
+      if (nodeState?.result?.child?.workflowId) {
+        candidateIds.push(nodeState.result.child.workflowId);
+      }
+      if (Array.isArray(nodeState?.result?.children)) {
+        for (const child of nodeState.result.children) {
+          if (child?.workflowId) {
+            candidateIds.push(child.workflowId);
+          }
+        }
+      }
+
+      for (const childWorkflowId of candidateIds) {
+        if (!childWorkflowId || seen.has(childWorkflowId)) continue;
+        seen.add(childWorkflowId);
+        children.push({
+          workflowId: childWorkflowId,
+          parentNodeId: nodeId,
+          status: nodeState?.status || 'unknown',
+        });
+      }
+    }
+
+    return children;
+  }
+
+  // Обновляет кэш дерева parent -> children.
+  cacheWorkflowChildren(workflowId, progress) {
+    if (!workflowId) return;
+    const children = this.extractChildWorkflows(progress);
+    this.workflowChildren = {
+      ...this.workflowChildren,
+      [workflowId]: children,
+    };
+  }
+
+  // Фоново наполняет дерево для workflow из списка.
+  async hydrateWorkflowChildren(items) {
+    const targets = (items || []).slice(0, 8).filter((item) => {
+      return !Object.prototype.hasOwnProperty.call(this.workflowChildren, item.workflowId);
+    });
+
+    for (const item of targets) {
+      try {
+        const progress = await this.request(`/workflows/doc/${item.workflowId}/progress`);
+        this.cacheWorkflowChildren(item.workflowId, progress);
+      } catch {
+        // Для completed/старых раннов query может быть недоступен.
+      }
+    }
+  }
+
+  // Нормализует статус child execution в класс бейджа.
+  childStatusClass(status) {
+    const normalized = String(status || 'unknown').toLowerCase();
+    if (normalized === 'done') return 'done';
+    if (normalized === 'running') return 'running';
+    if (normalized === 'failed') return 'failed';
+    if (normalized === 'skipped') return 'skipped';
+    if (normalized === 'pending') return 'pending';
+    return 'unknown';
+  }
+
+  // Человекочитаемый label child execution.
+  childStatusLabel(status) {
+    const normalized = String(status || 'unknown').toLowerCase();
+    if (normalized === 'done') return 'выполнено';
+    if (normalized === 'running') return 'в работе';
+    if (normalized === 'failed') return 'ошибка';
+    if (normalized === 'skipped') return 'пропущено';
+    if (normalized === 'pending') return 'ожидание';
+    return 'неизвестно';
+  }
+
   // Выбор workflow из левой панели.
   async pickWorkflow(workflowId) {
     if (!workflowId) return;
@@ -1144,18 +1376,20 @@ class DocWorkflowDemo extends LitElement {
     const index = order.indexOf(nodeId);
     const cardW = 320;
     const cardH = 112;
-    const colGap = 132;
-    const laneGap = 170;
-    const startX = 38;
-    const startY = 34;
+    const colGap = 124;
+    const laneGap = 178;
+    const startX = 48;
+    const startY = 30;
     const map = {
-      'intake.normalize': { col: 0, row: 1 },
-      'legal.approval': { col: 1, row: 1 },
-      'security.approval': { col: 2, row: 0 },
-      'procurement.approval': { col: 2, row: 2 },
-      'finance.approval': { col: 3, row: 1 },
-      'director.approval': { col: 4, row: 1 },
-      notify: { col: 5, row: 1, terminal: true },
+      'candidate.intake': { col: 1, row: 0 },
+      'recruiter.approval': { col: 1, row: 1 },
+      'finance.precheck': { col: 0, row: 2 },
+      'security.precheck': { col: 2, row: 2 },
+      'finance.approval': { col: 0, row: 3 },
+      'security.approval': { col: 2, row: 3 },
+      'director.approval': { col: 1, row: 4 },
+      'comp.committee': { col: 1, row: 5 },
+      notify: { col: 1, row: 6, terminal: true },
     };
     const slot = map[nodeId] || { col: Math.max(0, index), row: 1, terminal: false };
     const w = slot.terminal ? 174 : cardW;
@@ -1174,7 +1408,7 @@ class DocWorkflowDemo extends LitElement {
     if (!this.workflowId && !this.output) {
       const empty = document.createElement('div');
       empty.className = 'hint';
-      empty.textContent = 'Start workflow or query progress to render the graph.';
+      empty.textContent = 'Запустите workflow или нажмите "Обновить прогресс", чтобы построить граф.';
       container.appendChild(empty);
       return;
     }
@@ -1183,8 +1417,8 @@ class DocWorkflowDemo extends LitElement {
     const positions = new Map(nodes.map((node) => [node.id, { node, ...this.layoutFor(node.id) }]));
     const rightMost = Math.max(...[...positions.values()].map((item) => item.x + item.w));
     const bottomMost = Math.max(...[...positions.values()].map((item) => item.y + item.h));
-    const width = Math.max(1680, rightMost + 120);
-    const height = Math.max(540, bottomMost + 70);
+    const width = Math.max(1220, rightMost + 120);
+    const height = Math.max(980, bottomMost + 80);
 
     const svg = d3
       .select(container)
@@ -1195,24 +1429,8 @@ class DocWorkflowDemo extends LitElement {
       .attr('role', 'img');
 
     const defs = svg.append('defs');
+    const bgLayer = svg.append('g').attr('class', 'graph-bg');
     const viewport = svg.append('g').attr('class', 'graph-viewport');
-    const markerByColor = new Map();
-    const markerIdForColor = (color) => {
-      if (markerByColor.has(color)) return markerByColor.get(color);
-      const markerId = `flow-arrow-${markerByColor.size}`;
-      const marker = defs
-        .append('marker')
-        .attr('id', markerId)
-        .attr('viewBox', '0 0 10 10')
-        .attr('refX', 9)
-        .attr('refY', 5)
-        .attr('markerWidth', 8)
-        .attr('markerHeight', 8)
-        .attr('orient', 'auto-start-reverse');
-      marker.append('path').attr('d', 'M 0 0 L 10 5 L 0 10 z').attr('fill', color);
-      markerByColor.set(color, markerId);
-      return markerId;
-    };
 
     const pattern = defs
       .append('pattern')
@@ -1221,7 +1439,14 @@ class DocWorkflowDemo extends LitElement {
       .attr('height', 26)
       .attr('patternUnits', 'userSpaceOnUse');
     pattern.append('circle').attr('cx', 2).attr('cy', 2).attr('r', 1.4).attr('fill', '#d2d9ea');
-    viewport.append('rect').attr('width', width).attr('height', height).attr('fill', 'url(#dot-grid)');
+    const bgPadding = Math.max(width, height) * 2;
+    bgLayer
+      .append('rect')
+      .attr('x', -bgPadding)
+      .attr('y', -bgPadding)
+      .attr('width', width + bgPadding * 2)
+      .attr('height', height + bgPadding * 2)
+      .attr('fill', 'url(#dot-grid)');
 
     const cardShadow = defs
       .append('filter')
@@ -1238,28 +1463,80 @@ class DocWorkflowDemo extends LitElement {
       .attr('flood-color', '#243b69')
       .attr('flood-opacity', 0.14);
 
-    const linkGroup = viewport.append('g').attr('fill', 'none').attr('stroke-width', 3.2);
+    const linkGroup = viewport
+      .append('g')
+      .attr('fill', 'none')
+      .attr('stroke-width', 2.8)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-linejoin', 'round');
+
+    // Считаем структуру зависимостей: parent -> children.
+    const childrenByParent = new Map();
+    for (const node of nodes) {
+      for (const depId of node.after || []) {
+        if (!childrenByParent.has(depId)) {
+          childrenByParent.set(depId, []);
+        }
+        childrenByParent.get(depId).push(node.id);
+      }
+    }
+
+    // Для каждого parent вычисляем общую Y-линию ветвления (как в орг-чартах).
+    const branchYByParent = new Map();
+    for (const [parentId, childIds] of childrenByParent.entries()) {
+      const from = positions.get(parentId);
+      if (!from) continue;
+      const sourceY = from.y + from.h + 4;
+      const targetYs = childIds
+        .map((childId) => positions.get(childId))
+        .filter(Boolean)
+        .map((to) => (to.terminal ? to.y + 8 : to.y - 10));
+      const minTargetY = targetYs.length > 0 ? Math.min(...targetYs) : sourceY + 56;
+      const branchY = Math.max(sourceY + 18, Math.min(minTargetY - 26, sourceY + 58));
+      branchYByParent.set(parentId, branchY);
+    }
+
+    // Генератор ортогональной связи с мягкими скруглениями.
+    const buildOrthogonalPath = (x1, y1, x2, y2, branchY) => {
+      const radius = 14;
+      if (Math.abs(x1 - x2) < 1.5) {
+        return `M${x1},${y1} V${y2}`;
+      }
+      const dir = x2 > x1 ? 1 : -1;
+      const firstTurnY = Math.max(y1 + 6, branchY - radius);
+      const secondTurnY = branchY + radius;
+      return [
+        `M${x1},${y1}`,
+        `V${firstTurnY}`,
+        `Q${x1},${branchY} ${x1 + dir * radius},${branchY}`,
+        `H${x2 - dir * radius}`,
+        `Q${x2},${branchY} ${x2},${secondTurnY}`,
+        `V${y2}`,
+      ].join(' ');
+    };
+
     for (const node of nodes) {
       for (const depId of node.after || []) {
         const from = positions.get(depId);
         const to = positions.get(node.id);
         if (!from || !to) continue;
 
-        const x1 = from.x + from.w + 4;
-        const y1 = from.y + from.h / 2;
-        const x2 = to.terminal ? to.x + 10 : to.x - 16;
-        const y2 = to.y + to.h / 2;
-        const bend = Math.max(78, Math.abs(x2 - x1) * 0.44);
-        const path = `M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`;
+        const source = {
+          x: from.x + from.w / 2,
+          y: from.y + from.h + 4,
+        };
+        const target = {
+          x: to.x + to.w / 2,
+          y: to.terminal ? to.y + 8 : to.y - 10,
+        };
+        const branchY = branchYByParent.get(depId) ?? source.y + 44;
+        const path = buildOrthogonalPath(source.x, source.y, target.x, target.y, branchY);
 
         const color = this.edgeColor(depId, node.id);
-        const markerId = markerIdForColor(color);
         linkGroup
           .append('path')
           .attr('d', path)
-          .attr('stroke', color)
-          .attr('stroke-linecap', 'round')
-          .attr('marker-end', `url(#${markerId})`);
+          .attr('stroke', color);
       }
     }
 
@@ -1324,7 +1601,7 @@ class DocWorkflowDemo extends LitElement {
           .attr('font-weight', 800)
           .attr('fill', '#131f3f')
           .style('pointer-events', 'none')
-          .text('Final');
+          .text('Финал');
 
         const finalCompleted =
           String(this.output?.status || '').toLowerCase() === 'completed' ||
@@ -1339,7 +1616,7 @@ class DocWorkflowDemo extends LitElement {
           .attr('font-weight', 700)
           .attr('fill', color)
           .style('pointer-events', 'none')
-          .text(finalCompleted ? 'completed' : this.hasRejection() ? 'rejected' : 'waiting');
+          .text(finalCompleted ? 'завершено' : this.hasRejection() ? 'отклонено' : 'ожидание');
 
         continue;
       }
@@ -1404,6 +1681,12 @@ class DocWorkflowDemo extends LitElement {
         .style('pointer-events', 'none')
         .text(String(positions.get(node.id).order));
 
+      const typeLabel =
+        node.type === 'approval.kofn'
+          ? 'Согласование'
+          : node.type === 'child.start'
+            ? 'Дочерний процесс'
+            : 'Автошаг';
       nodeGroup
         .append('text')
         .attr('x', x + 56)
@@ -1412,10 +1695,10 @@ class DocWorkflowDemo extends LitElement {
         .attr('font-weight', 700)
         .attr('fill', '#5f6f95')
         .style('pointer-events', 'none')
-        .text(node.id);
+        .text(typeLabel);
 
       const titleRaw = node.label || node.id;
-      const titleText = titleRaw.length > 24 ? `${titleRaw.slice(0, 22)}...` : titleRaw;
+      const titleText = titleRaw.length > 30 ? `${titleRaw.slice(0, 28)}...` : titleRaw;
       nodeGroup
         .append('text')
         .attr('x', x + 56)
@@ -1427,8 +1710,8 @@ class DocWorkflowDemo extends LitElement {
         .text(titleText);
 
       const actorText = isApproval
-        ? (this.output?.approvals?.[node.id]?.approvedActors?.[0] || 'awaiting')
-        : 'system';
+        ? (this.output?.approvals?.[node.id]?.approvedActors?.[0] || 'ожидается')
+        : 'автоматически';
       const actorPillWidth = Math.max(92, Math.min(170, actorText.length * 7 + 42));
       nodeGroup
         .append('rect')
@@ -1454,7 +1737,7 @@ class DocWorkflowDemo extends LitElement {
       const approved = this.output?.approvals?.[node.id]?.approvedActors?.length || 0;
       const required = node.k || 0;
       const isRequired = this.isRequiredNow(node);
-      const badgeText = isApproval ? `${approved}/${required}` : 'system';
+      const badgeText = isApproval ? `${approved}/${required}` : 'авто';
       const badgeFill = isFinal ? '#1d2a47' : '#121a30';
       nodeGroup
         .append('rect')
@@ -1501,7 +1784,7 @@ class DocWorkflowDemo extends LitElement {
       }
 
       if (node.guard) {
-        const txt = isRequired ? 'required' : 'optional';
+        const txt = isRequired ? 'обязательный' : 'опциональный';
         const txtColor = isRequired ? '#c0670f' : '#6f7b99';
         nodeGroup
           .append('text')
@@ -1511,17 +1794,42 @@ class DocWorkflowDemo extends LitElement {
           .attr('font-weight', 700)
           .attr('fill', txtColor)
           .style('pointer-events', 'none')
-          .text(`guard: ${txt}`);
+          .text(`условие: ${txt}`);
       }
     }
 
     const saved = this.graphTransform || { x: 0, y: 0, k: 1 };
-    const savedTransform = d3.zoomIdentity.translate(saved.x || 0, saved.y || 0).scale(saved.k || 1);
+    const normalizedTransform = {
+      x: Math.max(-width, Math.min(width, Number(saved.x) || 0)),
+      y: Math.max(-height, Math.min(height, Number(saved.y) || 0)),
+      k: Math.max(0.45, Math.min(2.8, Number(saved.k) || 1)),
+    };
+    const savedTransform = d3.zoomIdentity
+      .translate(normalizedTransform.x, normalizedTransform.y)
+      .scale(normalizedTransform.k);
+    const applyVisualTransform = (transform) => {
+      const k = transform.k || 1;
+      const tx = (transform.x || 0) / k;
+      const ty = (transform.y || 0) / k;
+
+      // Масштаб меняет реальный размер SVG, чтобы внутренний скролл учитывал zoom.
+      svg.attr('width', Math.round(width * k)).attr('height', Math.round(height * k));
+      viewport.attr('transform', `translate(${tx},${ty})`);
+      bgLayer.attr('transform', `translate(${tx},${ty})`);
+    };
     const zoomBehavior = d3
       .zoom()
       .scaleExtent([0.45, 2.8])
+      .extent([
+        [0, 0],
+        [width, height],
+      ])
+      .translateExtent([
+        [-width * 0.6, -height * 0.6],
+        [width * 1.6, height * 1.6],
+      ])
       .on('zoom', (event) => {
-        viewport.attr('transform', event.transform);
+        applyVisualTransform(event.transform);
         this.graphTransform = {
           x: event.transform.x,
           y: event.transform.y,
@@ -1530,6 +1838,7 @@ class DocWorkflowDemo extends LitElement {
       });
 
     svg.call(zoomBehavior).on('dblclick.zoom', null);
+    applyVisualTransform(savedTransform);
     svg.call(zoomBehavior.transform, savedTransform);
   }
 
@@ -1537,10 +1846,10 @@ class DocWorkflowDemo extends LitElement {
   renderGraph() {
     return html`
       <div class="legend">
-        <span class="ok"><i></i>done</span>
-        <span class="err"><i></i>rejected</span>
-        <span class="skip"><i></i>skipped/optional</span>
-        <span>wheel: zoom, drag: pan</span>
+        <span class="ok"><i></i>выполнено</span>
+        <span class="err"><i></i>отклонено</span>
+        <span class="skip"><i></i>пропущено/опционально</span>
+        <span>колесо: зум, перетаскивание: панорама</span>
       </div>
       <div class="graph-shell">
         <div id="graph"></div>
@@ -1566,8 +1875,10 @@ class DocWorkflowDemo extends LitElement {
       <div class="shell">
         <header>
           <div>
-            <h1>Document Approval Demo</h1>
-            <div class="subtitle">Process flow with inline gate checks: intake -> legal(k=2 + gate) -> parallel -> finance(k=2 + gate) -> director -> publish</div>
+            <h1>Демо: Согласование кандидата</h1>
+            <div class="subtitle">
+              Подбор и согласование: рекрутеры -> параллельно финансы и безопасность -> директор -> (опционально) комитет по компенсациям -> оффер
+            </div>
           </div>
           <nav>
             <a href="/ui">Home</a>
@@ -1577,109 +1888,143 @@ class DocWorkflowDemo extends LitElement {
         </header>
 
         <section class="grid">
-          <section class="panel graph">
-            <h2>Route Graph</h2>
-            ${this.renderGraph()}
-          </section>
-
           <div class="workspace-row">
             <section class="panel workflows-panel">
-              <h2>Document Workflows</h2>
-              <button class="secondary" ?disabled=${this.busy} @click=${() => this.refreshWorkflowList()}>Refresh list</button>
+              <h2>Запущенные процессы</h2>
+              <button class="secondary" ?disabled=${this.busy} @click=${() => this.refreshWorkflowList()}>Обновить список</button>
               <div class="workflows-list">
                 ${this.workflowItems.length === 0
-                  ? html`<div class="hint">No workflows in this API session.</div>`
+                  ? html`<div class="hint">В этой сессии пока нет запусков.</div>`
                   : this.workflowItems.map(
-                      (item) => html`
-                        <button
-                          class="wf-item ${this.workflowId === item.workflowId ? 'active' : ''}"
-                          @click=${() => this.pickWorkflow(item.workflowId)}
-                        >
-                          <div class="wf-item-top">
-                            <span class="wf-id">${item.workflowId}</span>
-                            <span class="wf-status ${this.workflowStatusClass(item.status)}">${this.workflowStatusLabel(item.status)}</span>
+                      (item) => {
+                        const hasChildren = Object.prototype.hasOwnProperty.call(
+                          this.workflowChildren,
+                          item.workflowId
+                        );
+                        const children = hasChildren ? this.workflowChildren[item.workflowId] : [];
+                        const showChildren = hasChildren && (children.length > 0 || this.workflowId === item.workflowId);
+
+                        return html`
+                          <div class="wf-tree">
+                            <button
+                              class="wf-item ${this.workflowId === item.workflowId ? 'active' : ''}"
+                              @click=${() => this.pickWorkflow(item.workflowId)}
+                            >
+                              <div class="wf-item-top">
+                                <span class="wf-id">${item.workflowId}</span>
+                                <span class="wf-status ${this.workflowStatusClass(item.status)}">${this.workflowStatusLabel(item.status)}</span>
+                              </div>
+                              <div class="wf-time">start: ${this.formatDateTime(item.startTime)}</div>
+                            </button>
+                            ${showChildren
+                              ? html`
+                                  <div class="wf-children">
+                                    ${children.length === 0
+                                      ? html`<div class="wf-children-empty">дочерние workflow отсутствуют</div>`
+                                      : children.map(
+                                          (child) => html`
+                                            <div class="wf-child">
+                                              <div class="wf-child-main">
+                                                <div class="wf-child-id">${child.workflowId}</div>
+                                                <div class="wf-child-node">узел: ${child.parentNodeId}</div>
+                                              </div>
+                                              <span class="wf-status ${this.childStatusClass(child.status)}"
+                                                >${this.childStatusLabel(child.status)}</span
+                                              >
+                                            </div>
+                                          `
+                                        )}
+                                  </div>
+                                `
+                              : ''}
                           </div>
-                          <div class="wf-time">start: ${this.formatDateTime(item.startTime)}</div>
-                        </button>
-                      `
+                        `;
+                      }
                     )}
               </div>
             </section>
 
-            <div class="control-row">
-              <section class="panel">
-                <h2>Start Workflow</h2>
-                <label>docId</label>
-                <input .value=${this.docId} @input=${(e) => (this.docId = e.target.value)} />
-                <label>title</label>
-                <input .value=${this.title} @input=${(e) => (this.title = e.target.value)} />
-                <div class="inline">
-                  <div>
-                    <label>cost</label>
-                    <input type="number" .value=${String(this.cost)} @input=${(e) => (this.cost = Number(e.target.value || 0))} />
-                  </div>
-                  <div>
-                    <label>update cost</label>
-                    <button class="secondary" ?disabled=${this.busy || !this.workflowId} @click=${this.updateCost}>Apply</button>
-                  </div>
-                </div>
-                <button ?disabled=${this.busy} @click=${this.startWorkflow}>Start doc workflow</button>
-                <button class="secondary" ?disabled=${this.busy || !this.workflowId} @click=${this.queryProgress}>Query progress</button>
+            <div class="main-pane">
+              <section class="panel graph">
+                <h2>Граф маршрута</h2>
+                ${this.renderGraph()}
               </section>
 
-              <section class="panel">
-                <h2>Approval Signal</h2>
-                <label>workflowId</label>
-                <input .value=${this.workflowId} @input=${(e) => (this.workflowId = e.target.value)} placeholder="doc-..." />
-                <div class="hint">Selected step: ${this.selectedNode?.label || 'none'} (choose by graph click)</div>
-                <label>actor</label>
-                <select .value=${this.actor} @change=${(e) => (this.actor = e.target.value)} ?disabled=${!approvalAvailable || actorOptions.length === 0}>
-                  ${actorOptions.length === 0
-                    ? html`<option value="">no actors left</option>`
-                    : actorOptions.map((member) => html`<option value=${member}>${member}</option>`)}
-                </select>
-                <label>decision</label>
-                <div class="decision-row">
-                  ${this.decisions.map(
-                    (item) => html`
-                      <button
-                        class="decision-btn ${item.value} ${this.decision === item.value ? 'active' : ''}"
-                        type="button"
-                        ?disabled=${!approvalAvailable}
-                        @click=${() => {
-                          this.decision = item.value;
-                          if (item.value === 'accept') {
-                            this.comment = '';
-                          }
-                        }}
-                      >
-                        ${item.label}
-                      </button>
-                    `
-                  )}
-                </div>
-                <label>comment (required for decline)</label>
-                <input
-                  .value=${this.comment}
-                  @input=${(e) => (this.comment = e.target.value)}
-                  placeholder="reason for decline"
-                  ?disabled=${!approvalAvailable || !this.requiresComment}
-                />
-                <button ?disabled=${this.busy || !approvalAvailable || !this.actor || !this.workflowId || !commentValid} @click=${this.sendApproval}>
-                  Send approval
-                </button>
-              </section>
+              <div class="control-row">
+                <section class="panel">
+                  <h2>Запуск процесса</h2>
+                  <label>id кандидата</label>
+                  <input .value=${this.docId} @input=${(e) => (this.docId = e.target.value)} />
+                  <label>ФИО кандидата</label>
+                  <input .value=${this.title} @input=${(e) => (this.title = e.target.value)} />
+                  <div class="inline">
+                    <div>
+                      <label>Оклад (условные единицы)</label>
+                      <input type="number" .value=${String(this.cost)} @input=${(e) => (this.cost = Number(e.target.value || 0))} />
+                    </div>
+                    <div>
+                      <label>Изменить оклад</label>
+                      <button class="secondary" ?disabled=${this.busy || !this.workflowId} @click=${this.updateCost}>Применить</button>
+                    </div>
+                  </div>
+                  <button ?disabled=${this.busy} @click=${this.startWorkflow}>Запустить согласование</button>
+                  <button class="secondary" ?disabled=${this.busy || !this.workflowId} @click=${this.queryProgress}>Обновить прогресс</button>
+                </section>
 
-              <section class="panel">
-                <h2>Output</h2>
-                <pre>${JSON.stringify(this.output || { hint: 'Use start/query actions' }, null, 2)}</pre>
-              </section>
+                <section class="panel">
+                  <h2>Сигнал согласования</h2>
+                  <label>workflowId</label>
+                  <input .value=${this.workflowId} @input=${(e) => (this.workflowId = e.target.value)} placeholder="doc-..." />
+                  <div class="hint">Выбранный шаг: ${this.selectedNode?.label || 'не выбран'} (выбор кликом по графу)</div>
+                  <label>Участник</label>
+                  <select .value=${this.actor} @change=${(e) => (this.actor = e.target.value)} ?disabled=${!approvalAvailable || actorOptions.length === 0}>
+                    ${actorOptions.length === 0
+                      ? html`<option value="">нет доступных участников</option>`
+                      : actorOptions.map((member) => html`<option value=${member}>${member}</option>`)}
+                  </select>
+                  <label>Решение</label>
+                  <div class="decision-row">
+                    ${this.decisions.map(
+                      (item) => html`
+                        <button
+                          class="decision-btn ${item.value} ${this.decision === item.value ? 'active' : ''}"
+                          type="button"
+                          ?disabled=${!approvalAvailable}
+                          @click=${() => {
+                            this.decision = item.value;
+                            if (item.value === 'accept') {
+                              this.comment = '';
+                            }
+                          }}
+                        >
+                          ${item.label}
+                        </button>
+                      `
+                    )}
+                  </div>
+                  <label>Комментарий (обязателен при отклонении)</label>
+                  <input
+                    .value=${this.comment}
+                    @input=${(e) => (this.comment = e.target.value)}
+                    placeholder="укажите причину отклонения"
+                    ?disabled=${!approvalAvailable || !this.requiresComment}
+                  />
+                  <button ?disabled=${this.busy || !approvalAvailable || !this.actor || !this.workflowId || !commentValid} @click=${this.sendApproval}>
+                    Отправить решение
+                  </button>
+                </section>
+
+                <section class="panel">
+                  <h2>Результат</h2>
+                  <pre>${JSON.stringify(this.output || { hint: 'Запустите процесс или обновите прогресс' }, null, 2)}</pre>
+                </section>
+              </div>
             </div>
           </div>
         </section>
 
         <div class="status">
-          ${this.errorText ? html`<div class="error">${this.errorText}</div>` : html`<div>State: ${this.busy ? 'busy' : 'idle'}</div>`}
+          ${this.errorText ? html`<div class="error">${this.errorText}</div>` : html`<div>Состояние: ${this.busy ? 'занято' : 'ожидание'}</div>`}
         </div>
       </div>
 

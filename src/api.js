@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { TASK_QUEUE, TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE } from './config.js';
+import { registerHandlersRoutes } from './handlersRoutes.js';
 
 // Абсолютный путь до папки UI-страниц.
 const UI_ROOT = fileURLToPath(new URL('./ui', import.meta.url));
@@ -33,17 +34,17 @@ const ASSET_FILES = {
 
 // Строит конфиг URL-ов handlers app (doc/sd/trip).
 function buildHandlersConfig() {
-  // Дефолтный порт handlers берется из env.
-  const handlersPort = Number(process.env.HANDLERS_PORT || 4001);
-  // Базовый URL до handlers, если не задано явными APP_URL/SD_APP_URL/TRIP_APP_URL.
-  const baseUrl = Number.isFinite(handlersPort)
-    ? `http://localhost:${handlersPort}`
-    : 'http://localhost:4001';
+  // По умолчанию handlers встроены в API на том же порту.
+  const apiPort = Number(process.env.PORT || 3000);
+  // Явно задаваемый базовый URL API (удобно для прокси/докера).
+  const apiBaseUrl =
+    process.env.API_BASE_URL ||
+    (Number.isFinite(apiPort) ? `http://localhost:${apiPort}` : 'http://localhost:3000');
   return {
-    doc: process.env.APP_URL || `${baseUrl}/handlers`,
-    sd: process.env.SD_APP_URL || `${baseUrl}/sd`,
-    trip: process.env.TRIP_APP_URL || `${baseUrl}/trip`,
-    default: process.env.APP_URL || `${baseUrl}/handlers`,
+    doc: process.env.APP_URL || `${apiBaseUrl}/handlers`,
+    sd: process.env.SD_APP_URL || `${apiBaseUrl}/sd`,
+    trip: process.env.TRIP_APP_URL || `${apiBaseUrl}/trip`,
+    default: process.env.APP_URL || `${apiBaseUrl}/handlers`,
   };
 }
 
@@ -160,6 +161,9 @@ export async function buildApi() {
     return reply.redirect('/ui');
   });
 
+  // Регистрируем встроенные handlers endpoint-ы (в одном процессе с API).
+  registerHandlersRoutes(app);
+
   // Регистрируем все UI-страницы.
   for (const [routePath, fileName] of Object.entries(PAGE_FILES)) {
     app.get(routePath, async (_, reply) => sendPage(reply, fileName));
@@ -189,11 +193,15 @@ export async function buildApi() {
       const handlers = buildHandlersConfig();
 
       // Входные данные для jsonDAGWorkflow.
+      const vars = {
+        ...(body.vars || {}),
+        docHandlers: handlers.doc,
+      };
       const input = {
         processType: 'doc',
         docId,
         doc: body.doc || {},
-        vars: body.vars || {},
+        vars,
         route: body.route,
         handlers,
       };

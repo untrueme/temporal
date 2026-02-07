@@ -8,13 +8,14 @@
 - Платформа: Node.js >= 18, `type: "module"`.
 - Temporal SDK: `@temporalio/worker`, `@temporalio/client`, `@temporalio/workflow`.
 - API: Fastify (`src/api.js`).
-- Отдельное handlers-приложение: `src/handlersApp.js`.
+- Handlers endpoints встроены в API (`/handlers/*`, `/sd/*`, `/trip/*`).
+- Отдельный запуск handlers-приложения опционален: `src/handlersApp.js`.
 - Workflows:
   - `src/workflows/jsonDAGWorkflow.js` (универсальный JSON runner для document/trip)
   - `src/workflows/serviceDeskTicket.js` (service desk state machine)
   - child workflows: `src/workflows/childWorkflows.js`
 - Activities:
-  - HTTP вызовы в handlers app: `src/activities/http.js`
+  - HTTP вызовы в handlers endpoints: `src/activities/http.js`
 - Utilities:
   - guards: `src/utils/guards.js`
   - templates: `src/utils/templates.js`
@@ -27,7 +28,7 @@
 - Guard DSL безопасный, без `eval`.
 - Query handlers в workflow зарегистрированы через `defineQuery + setHandler`.
 - Есть API endpoints для `start/signal/query`.
-- Есть handlers app endpoints, которые логируют payload и возвращают JSON.
+- Есть handlers endpoints, которые логируют payload и возвращают JSON.
 - Temporal UI можно запускать в Docker.
 - Unit + integration тесты есть (основной акцент на unit utilities и базовые integration).
 
@@ -192,7 +193,7 @@
 ## 11) Быстрый handoff summary
 
 Система уже реализует:
-- Temporal workflows + Fastify API + handlers app,
+- Temporal workflows + Fastify API + встроенные handlers endpoints (опционально standalone handlers app),
 - document flow с глобальным stop на отказе в required approval,
 - dynamic extra-step по `cost` и `DOC_UPDATE`,
 - D3 demo UI с горизонтальным графом и выбором шага кликом,

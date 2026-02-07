@@ -11,8 +11,8 @@
     "api": "node src/api.js",
     "handlers": "node src/handlersApp.js",
     "test": "node --test",
-    "test:unit": "node --test test/unit",
-    "test:integration": "node --test test/integration"
+    "test:unit": "node --test test/unit/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js"
   },
   "dependencies": {
     "@temporalio/client": "^1.11.6",

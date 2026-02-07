@@ -1,23 +1,18 @@
-import { buildHandlersApp } from '../../src/handlersApp.js';
 import { buildApi } from '../../src/api.js';
 import { startWorker } from '../../src/worker.js';
 
 export async function startRuntime() {
-  const handlersApp = await buildHandlersApp();
-  const handlersUrl = await handlersApp.listen({ port: 0, host: '127.0.0.1' });
-
-  process.env.APP_URL = `${handlersUrl}/handlers`;
-  process.env.SD_APP_URL = `${handlersUrl}/sd`;
-  process.env.TRIP_APP_URL = `${handlersUrl}/trip`;
-
   const api = await buildApi();
   const apiUrl = await api.listen({ port: 0, host: '127.0.0.1' });
+
+  // В тестах направляем activities обратно в тот же API-процесс.
+  process.env.APP_URL = `${apiUrl}/handlers`;
+  process.env.SD_APP_URL = `${apiUrl}/sd`;
+  process.env.TRIP_APP_URL = `${apiUrl}/trip`;
 
   const { worker, runPromise } = await startWorker();
 
   return {
-    handlersApp,
-    handlersUrl,
     api,
     apiUrl,
     worker,
@@ -30,7 +25,6 @@ export async function stopRuntime(runtime) {
   await runtime.worker.shutdown();
   await runtime.runPromise;
   await runtime.api.close();
-  await runtime.handlersApp.close();
 }
 
 export async function poll(fn, { timeoutMs = 5000, intervalMs = 200 } = {}) {
