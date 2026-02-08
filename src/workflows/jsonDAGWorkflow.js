@@ -69,7 +69,7 @@ export async function jsonDAGWorkflow(input) {
     startedAt: new Date().toISOString(),
     completedAt: null,
   };
-  // Канонические runtime-блоки в context: route/steps/history/document.
+  // Канонические runtime-блоки в context: route/steps/document/documentHistory.
   if (!state.context || typeof state.context !== 'object' || Array.isArray(state.context)) {
     state.context = {};
   }
@@ -79,8 +79,8 @@ export async function jsonDAGWorkflow(input) {
   if (!state.context.steps || typeof state.context.steps !== 'object' || Array.isArray(state.context.steps)) {
     state.context.steps = {};
   }
-  if (!Array.isArray(state.context.history)) {
-    state.context.history = [];
+  if (!Array.isArray(state.context.documentHistory)) {
+    state.context.documentHistory = [];
   }
   if (!state.context.document || typeof state.context.document !== 'object' || Array.isArray(state.context.document)) {
     state.context.document = doc;
@@ -114,21 +114,11 @@ export async function jsonDAGWorkflow(input) {
       },
     };
     state.context.steps[node.id] = {
-      id: node.id,
-      type: node.type,
-      label: node.label || node.id,
-      after: node.after || [],
-      required: node.required !== false,
-      guard: node.guard || null,
       status: 'pending',
       startedAt: null,
       completedAt: null,
       result: null,
       error: null,
-      hooks: {
-        pre: null,
-        post: null,
-      },
       approval: null,
     };
     if (node.type === 'approval.kofn') {
@@ -151,12 +141,35 @@ export async function jsonDAGWorkflow(input) {
   // Текущие запущенные node-задачи и их cancellation scope.
   const running = new Map();
   const runningScopes = new Map();
-  const stepHistoryCursor = {};
 
   // Безопасный JSON-clone для снапшотов истории.
   function cloneJson(value) {
     if (value === undefined) return undefined;
     return JSON.parse(JSON.stringify(value));
+  }
+
+  if (state.context.documentHistory.length === 0) {
+    state.context.documentHistory.push({
+      at: new Date().toISOString(),
+      source: 'start',
+      patch: {},
+      document: cloneJson(state.context.document),
+    });
+  }
+
+  function toPublicApproval(approvalState) {
+    if (!approvalState) return null;
+    return {
+      required: approvalState.required,
+      approvedCount: Array.isArray(approvalState.approvedActors)
+        ? approvalState.approvedActors.length
+        : 0,
+      approvedActors: approvalState.approvedActors || [],
+      decision: approvalState.decision || null,
+      decisionActor: approvalState.decisionActor || null,
+      decisionComment: approvalState.decisionComment || null,
+      updatedAt: approvalState.updatedAt || null,
+    };
   }
 
   // Проверяет, обязателен ли approval-узел для текущего маршрута.
@@ -307,36 +320,15 @@ export async function jsonDAGWorkflow(input) {
       applyRenderedContext(node.setVars, localCtx);
     }
 
-    // Единый блок шага в context.steps (definition + runtime + approval).
+    // Единый блок runtime шага в context.steps.
     state.context.steps[node.id] = {
-      id: node.id,
-      type: node.type,
-      label: node.label || node.id,
-      after: node.after || [],
-      required: node.required !== false,
-      guard: node.guard || null,
       status: nodeState.status,
       startedAt: nodeState.startedAt,
       completedAt: nodeState.completedAt,
       result: nodeState.result,
       error: nodeState.error,
-      hooks: nodeState.hooks,
-      approval: state.approvals[node.id] || null,
+      approval: toPublicApproval(state.approvals[node.id] || null),
     };
-
-    // История изменений по шагам: только при фактическом изменении статуса/времени завершения.
-    const cursor = `${nodeState.status || ''}|${nodeState.completedAt || ''}`;
-    if (stepHistoryCursor[node.id] !== cursor) {
-      stepHistoryCursor[node.id] = cursor;
-      state.context.history.push({
-        kind: 'step',
-        at: new Date().toISOString(),
-        nodeId: node.id,
-        status: nodeState.status,
-        document: cloneJson(state.context.document),
-        result: cloneJson(nodeState.result),
-      });
-    }
   }
 
   // Глобально останавливает процесс: отменяет running и скипает pending.
@@ -468,7 +460,7 @@ export async function jsonDAGWorkflow(input) {
     if (node && nodeState) {
       state.context.steps[nodeId] = {
         ...(state.context.steps[nodeId] || {}),
-        approval: state.approvals[nodeId] || null,
+        approval: toPublicApproval(state.approvals[nodeId] || null),
       };
       syncNodeContext(node, nodeState, {}, { applyNodeContext: false });
     }
@@ -485,10 +477,9 @@ export async function jsonDAGWorkflow(input) {
         state.context.document.cost = data.cost;
         state.doc.cost = data.cost;
         ctx.doc.cost = data.cost;
-        state.context.history.push({
-          kind: 'doc_update',
+        state.context.documentHistory.push({
           at: new Date().toISOString(),
-          eventName,
+          source: eventName,
           patch: { cost: data.cost },
           document: cloneJson(state.context.document),
         });
@@ -517,10 +508,6 @@ export async function jsonDAGWorkflow(input) {
       abort: state.abort || null,
       failure: state.failure || null,
       lastSignalError: state.lastSignalError || null,
-      finalDecision: state.finalDecision || null,
-      reasonCode: state.reasonCode || null,
-      failedNodeId: state.failedNodeId || null,
-      failedNodeLabel: state.failedNodeLabel || null,
     };
   }
 

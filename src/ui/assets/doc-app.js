@@ -1069,7 +1069,7 @@ class DocWorkflowDemo extends LitElement {
     const deps = this.depsFor(node.id);
 
     if (!this.output) {
-      return deps.length === 0;
+      return true;
     }
 
     const state = this.getStepState(node.id);
@@ -1275,7 +1275,7 @@ class DocWorkflowDemo extends LitElement {
   async loadProgress(workflowId) {
     const id = workflowId || this.workflowId || `doc-${this.docId}`;
     const previousWorkflowId = this.workflowId;
-    const maxAttempts = 5;
+    const maxAttempts = 12;
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -1300,7 +1300,7 @@ class DocWorkflowDemo extends LitElement {
         if (!this.isProgressQueryError(error) || attempt === maxAttempts) {
           break;
         }
-        await this.sleep(150 * attempt);
+        await this.sleep(180 * attempt);
       }
     }
 
@@ -1321,10 +1321,45 @@ class DocWorkflowDemo extends LitElement {
       });
       this.navigationStack = [];
       this.workflowId = data.workflowId;
-      const movedToInteractive = await this.waitForFirstInteractiveStep(data.workflowId);
-      if (!movedToInteractive) {
-        await this.loadProgress(data.workflowId);
+      this.workflowItems = [
+        {
+          workflowId: data.workflowId,
+          status: 'running',
+          startTime: new Date().toISOString(),
+          closeTime: null,
+        },
+        ...this.workflowItems.filter((item) => item.workflowId !== data.workflowId),
+      ];
+      if (!this.output) {
+        this.output = {
+          processType: 'doc',
+          status: 'running',
+          statusMessage: 'Запуск процесса',
+          context: {
+            route: this.route,
+            steps: {},
+            document: { title: this.title, cost: Number(this.cost), candidateId: this.docId },
+            documentHistory: [],
+          },
+          startedAt: new Date().toISOString(),
+          completedAt: null,
+        };
       }
+      this.ensureSelection();
+      this.drawGraph();
+
+      try {
+        const movedToInteractive = await this.waitForFirstInteractiveStep(data.workflowId);
+        if (!movedToInteractive) {
+          await this.loadProgress(data.workflowId);
+        }
+      } catch (error) {
+        if (!this.isProgressQueryError(error)) {
+          throw error;
+        }
+        this.showToast('Процесс запущен. Query временно недоступен, повторите "Обновить прогресс" через 1-2 секунды.');
+      }
+
       this.focusFirstSelectableApproval();
       await this.refreshWorkflowList({ silent: true });
     });
