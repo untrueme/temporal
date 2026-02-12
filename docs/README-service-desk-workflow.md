@@ -10,7 +10,7 @@ Workflow тикета с event-driven переходами статусов и S
 
 ## Полный curl: старт тикета
 ```bash
-curl -X POST http://localhost:3000/tickets/start \
+curl -X POST http://localhost:3007/tickets/start \
   -H 'content-type: application/json' \
   -d '{
     "ticketId": "100",
@@ -21,22 +21,22 @@ curl -X POST http://localhost:3000/tickets/start \
 
 ## Полный curl: сценарий assign -> responded -> resolve
 ```bash
-curl -X POST http://localhost:3000/tickets/ticket-100/event \
+curl -X POST http://localhost:3007/tickets/ticket-100/event \
   -H 'content-type: application/json' \
   -d '{ "type": "ASSIGN", "actor": "dispatcher" }'
 
-curl -X POST http://localhost:3000/tickets/ticket-100/event \
+curl -X POST http://localhost:3007/tickets/ticket-100/event \
   -H 'content-type: application/json' \
   -d '{ "type": "AGENT_RESPONDED", "actor": "agent1" }'
 
-curl -X POST http://localhost:3000/tickets/ticket-100/event \
+curl -X POST http://localhost:3007/tickets/ticket-100/event \
   -H 'content-type: application/json' \
   -d '{ "type": "RESOLVE", "actor": "agent1" }'
 ```
 
 ## Полный curl: состояние
 ```bash
-curl http://localhost:3000/tickets/ticket-100/state
+curl http://localhost:3007/tickets/ticket-100/state
 ```
 
 ## SLA breach demo
@@ -45,5 +45,5 @@ curl http://localhost:3000/tickets/ticket-100/state
 - Через ~200мс в `state.flags.firstResponseBreached` будет `true`.
 
 ## Demo UI
-- Page: `http://localhost:3000/ui/tickets`
+- Page: `http://localhost:3007/ui/tickets`
 - UI runs on the same host/port as API.

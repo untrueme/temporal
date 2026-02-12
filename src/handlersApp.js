@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import Fastify from 'fastify';
 import { fileURLToPath } from 'url';
 import { registerHandlersRoutes } from './handlersRoutes.js';

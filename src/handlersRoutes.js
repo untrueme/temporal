@@ -96,13 +96,66 @@ export function registerHandlersRoutes(app) {
           budgetBand: salary >= 180 ? 'HIGH' : salary >= 120 ? 'MID' : 'LOW',
         };
       } else if (check === 'security_precheck') {
+        const toCanonicalDoc = (value) => {
+          const token = String(value || '').trim().toLowerCase();
+          if (!token) return '';
+          if (token === 'passport' || token === 'паспорт') return 'passport';
+          if (
+            token === 'consent' ||
+            token === 'privacy_consent' ||
+            token === 'согласие' ||
+            token === 'согласие_на_обработку_данных'
+          ) {
+            return 'consent';
+          }
+          return token;
+        };
+
+        const normalizeDocs = (value) => {
+          if (Array.isArray(value)) {
+            return value
+              .map((item) => {
+                if (typeof item === 'string') return toCanonicalDoc(item);
+                if (item && typeof item === 'object') {
+                  return toCanonicalDoc(item.type || item.name || item.id || '');
+                }
+                return '';
+              })
+              .filter(Boolean);
+          }
+          return String(value || '')
+            .split(',')
+            .map((item) => toCanonicalDoc(item))
+            .filter(Boolean);
+        };
+
+        const providedDocuments = normalizeDocs(
+          payload.documents || payload.securityDocuments || []
+        );
+        const requiredDocuments = normalizeDocs(
+          payload.requiredDocuments || ['passport', 'consent']
+        );
+        const missingDocuments = requiredDocuments.filter(
+          (docType) => !providedDocuments.includes(docType)
+        );
+        const docsReady = missingDocuments.length === 0;
+
         const riskTag = String(payload.riskTag || '').toLowerCase();
         const riskScore = riskTag === 'high' ? 85 : riskTag === 'medium' ? 58 : 34;
-        validation = riskScore <= 70 ? 'ok' : 'failed';
-        reason = validation === 'ok' ? 'risk_acceptable' : 'risk_too_high';
+        const riskOk = riskScore <= 70;
+        validation = docsReady && riskOk ? 'ok' : 'failed';
+        if (!docsReady) {
+          reason = 'missing_required_docs_for_security';
+        } else {
+          reason = validation === 'ok' ? 'risk_acceptable' : 'risk_too_high';
+        }
         nextParams = {
           riskScore,
           riskTag: riskTag || 'low',
+          documentsProvided: providedDocuments,
+          requiredDocuments,
+          missingDocuments,
+          documentsReady: docsReady,
         };
       } else if (check === 'final_gate') {
         validation = 'ok';
@@ -122,7 +175,7 @@ export function registerHandlersRoutes(app) {
         // Добавляем подробности pre-check.
         precheck: {
           // Версия условной политики.
-          policyVersion: 'v2',
+          policyVersion: 'v1',
           // Признак, что актор допущен.
           actorAllowed: validation === 'ok',
           // Признак, что блокировка на изменение получена.

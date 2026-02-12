@@ -169,6 +169,7 @@ test('doc workflow stops on decline', async () => {
       nodeId: 'legal.approval',
       actor: 'alice',
       decision: 'decline',
+      comment: 'не согласовано юристом',
     }),
   });
 
@@ -238,6 +239,7 @@ test('doc workflow continues when decline is on non-required approval', async ()
       nodeId: 'optional.approval',
       actor: 'observer1',
       decision: 'decline',
+      comment: 'необязательное замечание',
     }),
   });
 
@@ -264,4 +266,89 @@ test('doc workflow continues when decline is on non-required approval', async ()
   assert.equal(progress.context.steps['optional.approval'].status, 'done');
   assert.equal(progress.context.steps['optional.approval'].result?.outcome, 'rejected');
   assert.equal(progress.context.steps.notify.status, 'done');
+});
+
+test('doc workflow rewinds to previous step on need_changes decision', async () => {
+  const startRes = await fetch(`${runtime.apiUrl}/workflows/doc/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      docId: 'doc-needs-changes',
+      doc: { cost: 150 },
+      route,
+    }),
+  });
+  const startData = await startRes.json();
+  const workflowId = startData.workflowId;
+
+  await fetch(`${runtime.apiUrl}/workflows/doc/${workflowId}/approval`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      nodeId: 'legal.approval',
+      actor: 'alice',
+      decision: 'need_changes',
+      comment: 'пакет документов неполный',
+    }),
+  });
+
+  const progress = await poll(async () => {
+    const res = await fetch(`${runtime.apiUrl}/workflows/doc/${workflowId}/progress`);
+    const data = await res.json();
+    if (data.status === 'running' && data.context?.lastNeedChanges?.targetNodeId === 'legal.review') {
+      return data;
+    }
+    return null;
+  }, { timeoutMs: 6000, intervalMs: 200 });
+
+  assert.equal(progress.status, 'running');
+  assert.equal(progress.context?.lastNeedChanges?.nodeId, 'legal.approval');
+  assert.equal(progress.context?.lastNeedChanges?.targetNodeId, 'legal.review');
+  assert.equal(progress.abort, null);
+});
+
+test('doc workflow terminates on self-withdraw signal', async () => {
+  const startRes = await fetch(`${runtime.apiUrl}/workflows/doc/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      docId: 'doc-self-withdraw',
+      doc: { cost: 120 },
+      route,
+    }),
+  });
+  const startData = await startRes.json();
+  const workflowId = startData.workflowId;
+
+  const noReasonRes = await fetch(`${runtime.apiUrl}/workflows/doc/${workflowId}/self-withdraw`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      actor: 'candidate',
+    }),
+  });
+  assert.equal(noReasonRes.status, 400);
+
+  const selfWithdrawRes = await fetch(`${runtime.apiUrl}/workflows/doc/${workflowId}/self-withdraw`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      actor: 'candidate',
+      reason: 'получил контроффер',
+    }),
+  });
+  assert.equal(selfWithdrawRes.status, 200);
+
+  const progress = await poll(async () => {
+    const res = await fetch(`${runtime.apiUrl}/workflows/doc/${workflowId}/progress`);
+    const data = await res.json();
+    if (data.status === 'withdrawn') {
+      return data;
+    }
+    return null;
+  }, { timeoutMs: 6000, intervalMs: 200 });
+
+  assert.equal(progress.status, 'withdrawn');
+  assert.equal(progress.abort?.reason, 'self_withdrawal');
+  assert.equal(progress.abort?.comment, 'получил контроффер');
 });

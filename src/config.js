@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 // Название очереди задач Temporal, к которой слушает worker.
 export const TASK_QUEUE = process.env.TASK_QUEUE || 'temportal';
 // Адрес Temporal Frontend (host:port).

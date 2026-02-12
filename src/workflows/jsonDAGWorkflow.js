@@ -132,6 +132,7 @@ export async function jsonDAGWorkflow(input) {
 
   const approvalSignal = defineSignal('approval');
   const eventSignal = defineSignal('processEvent');
+  const selfWithdrawSignal = defineSignal('selfWithdraw');
   // Счетчик сигналов для пробуждения основного цикла без polling.
   let signalCounter = 0;
 
@@ -141,6 +142,12 @@ export async function jsonDAGWorkflow(input) {
   // Текущие запущенные node-задачи и их cancellation scope.
   const running = new Map();
   const runningScopes = new Map();
+  // Запрос rewind по сценарию need_changes.
+  let rewindRequest = null;
+  // Ноды, которые отменяются/перезапускаются из-за rewind.
+  const rewindingNodes = new Set();
+  // Директивы возврата для конкретных approval-узлов.
+  const needChangesRequests = {};
 
   // Безопасный JSON-clone для снапшотов истории.
   function cloneJson(value) {
@@ -203,8 +210,10 @@ export async function jsonDAGWorkflow(input) {
       publish_allowed: 'публикация разрешена политикой',
       gate_condition_failed: 'не пройдено gate-условие',
       approval_decision: 'получено отрицательное решение согласующего',
+      self_withdrawal: 'кандидат отозвал заявку самостоятельно',
       step_failed: 'шаг завершился с ошибкой',
       child_process_failed: 'дочерний процесс завершился ошибкой или отклонением',
+      missing_required_docs_for_security: 'для проверки СБ не хватает обязательных документов',
     };
     if (map[code]) return map[code];
     return code.replace(/[_\-]+/g, ' ');
@@ -252,6 +261,12 @@ export async function jsonDAGWorkflow(input) {
       const actor = meta.actor ? ` Участник: ${meta.actor}.` : '';
       const comment = meta.comment ? ` Причина: ${meta.comment}.` : '';
       return `Процесс отклонен: получено решение "decline" на ${nodeText}.${actor}${comment}`;
+    }
+
+    if (meta.reason === 'self_withdrawal' || status === 'withdrawn') {
+      const actor = meta.actor ? ` Кто: ${meta.actor}.` : '';
+      const comment = meta.comment ? ` Причина: ${meta.comment}.` : '';
+      return `Процесс завершен самоотказом кандидата.${actor}${comment}`;
     }
 
     if (status === 'failed') {
@@ -321,6 +336,7 @@ export async function jsonDAGWorkflow(input) {
     }
 
     // Единый блок runtime шага в context.steps.
+    const prevRewindReason = state.context.steps[node.id]?.rewindReason || null;
     state.context.steps[node.id] = {
       status: nodeState.status,
       startedAt: nodeState.startedAt,
@@ -328,6 +344,7 @@ export async function jsonDAGWorkflow(input) {
       result: nodeState.result,
       error: nodeState.error,
       approval: toPublicApproval(state.approvals[node.id] || null),
+      rewindReason: nodeState.status === 'pending' ? prevRewindReason : null,
     };
   }
 
@@ -388,6 +405,182 @@ export async function jsonDAGWorkflow(input) {
     return [...result];
   }
 
+  // Возвращает дефолтный шаг для возврата при need_changes.
+  function defaultNeedChangesTarget(nodeId) {
+    const allowed = allowedNeedChangesTargets(nodeId);
+    const node = nodeById[nodeId];
+    if (!node) return null;
+
+    const explicitDefault = node?.needChanges?.defaultTarget || null;
+    if (explicitDefault && allowed.includes(explicitDefault)) {
+      return explicitDefault;
+    }
+
+    if (Array.isArray(node.after) && node.after.length > 0) {
+      const directPrev = node.after[node.after.length - 1];
+      if (allowed.includes(directPrev)) return directPrev;
+    }
+
+    const index = route.nodes.findIndex((it) => it.id === nodeId);
+    if (index > 0 && allowed.includes(route.nodes[index - 1].id)) {
+      return route.nodes[index - 1].id;
+    }
+
+    return allowed[0] || null;
+  }
+
+  // Собирает всех транзитивных предков узла.
+  function collectAncestors(nodeId, acc = new Set()) {
+    const node = nodeById[nodeId];
+    if (!node) return acc;
+    for (const depId of node.after || []) {
+      if (!depId || acc.has(depId)) continue;
+      acc.add(depId);
+      collectAncestors(depId, acc);
+    }
+    return acc;
+  }
+
+  // Признак стартового автошага (корневой не-approval этап).
+  function isInitialAutomaticNode(nodeId) {
+    const node = nodeById[nodeId];
+    if (!node) return false;
+    const deps = node.after || [];
+    return deps.length === 0 && node.type !== 'approval.kofn';
+  }
+
+  // Допустимые цели возврата по need_changes для текущего шага.
+  function allowedNeedChangesTargets(nodeId) {
+    const node = nodeById[nodeId];
+    if (!node) return [];
+
+    const ancestors = [...collectAncestors(nodeId)];
+    let allowed = ancestors.filter((id) => Boolean(nodeById[id]));
+
+    // Глобально запрещаем возврат на стартовые автошаги, если явно не разрешено.
+    const allowInitial = node?.needChanges?.allowInitial === true;
+    if (!allowInitial) {
+      allowed = allowed.filter((id) => !isInitialAutomaticNode(id));
+    }
+
+    const cfg = node?.needChanges || {};
+    if (Array.isArray(cfg.allowedTargets) && cfg.allowedTargets.length > 0) {
+      const set = new Set(cfg.allowedTargets.filter((id) => Boolean(nodeById[id])));
+      allowed = allowed.filter((id) => set.has(id));
+    }
+    if (Array.isArray(cfg.disallowTargets) && cfg.disallowTargets.length > 0) {
+      const deny = new Set(cfg.disallowTargets);
+      allowed = allowed.filter((id) => !deny.has(id));
+    }
+
+    return [...new Set(allowed)];
+  }
+
+  // Резолвит шаг возврата: явный -> дефолтный в рамках policy.
+  function resolveNeedChangesTarget(nodeId, requestedTargetNodeId) {
+    const allowed = allowedNeedChangesTargets(nodeId);
+    const fallbackTarget = defaultNeedChangesTarget(nodeId);
+    if (allowed.length === 0) {
+      return fallbackTarget;
+    }
+    if (!requestedTargetNodeId) {
+      return fallbackTarget;
+    }
+    if (allowed.includes(requestedTargetNodeId)) {
+      return requestedTargetNodeId;
+    }
+    return fallbackTarget;
+  }
+
+  // Полностью сбрасывает runtime-состояние узла в pending.
+  function resetNodeRuntime(nodeId, reason = 'need_changes_rewind') {
+    const node = nodeById[nodeId];
+    const nodeState = state.nodes[nodeId];
+    if (!node || !nodeState) return;
+    nodeState.status = 'pending';
+    nodeState.startedAt = null;
+    nodeState.completedAt = null;
+    nodeState.result = null;
+    nodeState.error = null;
+    nodeState.hooks = {
+      pre: null,
+      post: null,
+    };
+    if (node.type === 'approval.kofn') {
+      state.approvals[nodeId] = initApprovalState(approvalConfig[nodeId] || {});
+    }
+    state.context.steps[nodeId] = {
+      status: nodeState.status,
+      startedAt: nodeState.startedAt,
+      completedAt: nodeState.completedAt,
+      result: nodeState.result,
+      error: nodeState.error,
+      approval: toPublicApproval(state.approvals[nodeId] || null),
+      rewindReason: reason,
+    };
+    syncNodeContext(node, nodeState, {}, { applyNodeContext: false });
+  }
+
+  // Ставит запрос на возврат процесса к указанному шагу.
+  function requestNeedChangesRewind({
+    nodeId,
+    actor,
+    comment,
+    targetNodeId,
+  }) {
+    if (!targetNodeId || !nodeById[targetNodeId]) return;
+    rewindRequest = {
+      nodeId,
+      actor,
+      comment,
+      targetNodeId,
+      at: new Date().toISOString(),
+    };
+  }
+
+  // Применяет запрос rewind: отменяет запущенные ветки и переводит узлы обратно в pending.
+  function applyNeedChangesRewind() {
+    if (!rewindRequest) return;
+    const request = rewindRequest;
+    rewindRequest = null;
+
+    const resetSet = new Set([request.targetNodeId, ...collectDependents(request.targetNodeId)]);
+    for (const nodeId of resetSet) {
+      const scope = runningScopes.get(nodeId);
+      if (scope) {
+        rewindingNodes.add(nodeId);
+        scope.cancel();
+      }
+    }
+    for (const nodeId of resetSet) {
+      let rewindReason = 'need_changes_downstream_reset';
+      if (nodeId === request.nodeId) {
+        rewindReason = 'need_changes_source_waiting';
+      } else if (nodeId === request.targetNodeId) {
+        rewindReason = 'need_changes_target_requested';
+      }
+      resetNodeRuntime(nodeId, rewindReason);
+    }
+
+    if (!Array.isArray(state.context.needChangesHistory)) {
+      state.context.needChangesHistory = [];
+    }
+    state.context.needChangesHistory.push({
+      ...request,
+      nodeLabel: stepName(request.nodeId),
+      targetLabel: stepName(request.targetNodeId),
+    });
+    state.context.lastNeedChanges = {
+      ...request,
+      nodeLabel: stepName(request.nodeId),
+      targetLabel: stepName(request.targetNodeId),
+    };
+    state.status = 'running';
+    state.statusMessage =
+      `Запрошена доработка: возврат на шаг "${stepName(request.targetNodeId)}"` +
+      ` после решения по шагу "${stepName(request.nodeId)}".`;
+  }
+
   // Реактивирует ранее skipped(guard_false) узлы, если guard стал true.
   function maybeReactivateGuardNodes() {
     for (const node of route.nodes) {
@@ -414,7 +607,7 @@ export async function jsonDAGWorkflow(input) {
 
   // Signal approval: накапливает голоса и умеет fail-fast по decline required-шага.
   setHandler(approvalSignal, (payload) => {
-    const { nodeId, actor, decision, comment } = payload || {};
+    const { nodeId, actor, decision, comment, returnToNodeId } = payload || {};
     if (!nodeId) return;
 
     const normalizedDecision = normalizeApprovalDecision(decision);
@@ -423,7 +616,7 @@ export async function jsonDAGWorkflow(input) {
       if (isNegativeDecision && trimmedComment.length === 0) {
       state.lastSignalError = {
         type: 'approval_validation',
-        message: 'comment is required for decline',
+        message: 'comment is required for decline or need_changes',
         nodeId,
         actor,
         decision: normalizedDecision,
@@ -431,6 +624,30 @@ export async function jsonDAGWorkflow(input) {
       };
       signalCounter += 1;
       return;
+    }
+    if (normalizedDecision === 'needs_changes') {
+      const resolvedTarget = resolveNeedChangesTarget(nodeId, returnToNodeId);
+      if (!resolvedTarget) {
+        state.lastSignalError = {
+          type: 'approval_validation',
+          message: 'need_changes is not allowed for this step',
+          nodeId,
+          actor,
+          decision: normalizedDecision,
+          at: new Date().toISOString(),
+        };
+        signalCounter += 1;
+        return;
+      }
+      needChangesRequests[nodeId] = {
+        nodeId,
+        actor,
+        comment: trimmedComment,
+        targetNodeId: resolvedTarget,
+        at: new Date().toISOString(),
+      };
+    } else {
+      delete needChangesRequests[nodeId];
     }
     if (!state.approvals[nodeId]) {
       state.approvals[nodeId] = initApprovalState(approvalConfig[nodeId] || {});
@@ -441,9 +658,9 @@ export async function jsonDAGWorkflow(input) {
       comment: trimmedComment,
     });
 
-    if (isNegativeDecision) {
+    if (normalizedDecision === 'reject') {
       if (isRequiredApprovalNode(nodeId)) {
-        const status = normalizedDecision === 'needs_changes' ? 'needs_changes' : 'rejected';
+        const status = 'rejected';
         abortWorkflow(status, {
           nodeId,
           actor,
@@ -468,19 +685,46 @@ export async function jsonDAGWorkflow(input) {
     signalCounter += 1;
   });
 
+  // Signal selfWithdraw: независимый терминальный сигнал самоотказа кандидата.
+  setHandler(selfWithdrawSignal, (payload) => {
+    const actor = String(payload?.actor || 'candidate').trim() || 'candidate';
+    const reason = String(payload?.reason || '').trim();
+    if (!reason) {
+      state.lastSignalError = {
+        type: 'self_withdraw_validation',
+        message: 'reason is required for self-withdraw',
+        actor,
+        at: new Date().toISOString(),
+      };
+      signalCounter += 1;
+      return;
+    }
+    abortWorkflow('withdrawn', {
+      actor,
+      reason: 'self_withdrawal',
+      comment: reason,
+    });
+    signalCounter += 1;
+  });
+
   // Signal processEvent: сохраняет события и поддерживает DOC_UPDATE(cost).
   setHandler(eventSignal, (payload) => {
     const { eventName, data } = payload || {};
     if (!eventName) return;
     if (eventName === 'DOC_UPDATE' && data && typeof data === 'object') {
-      if (Object.prototype.hasOwnProperty.call(data, 'cost')) {
-        state.context.document.cost = data.cost;
-        state.doc.cost = data.cost;
-        ctx.doc.cost = data.cost;
+      const patch = {};
+      for (const [key, value] of Object.entries(data)) {
+        state.context.document[key] = value;
+        state.doc[key] = value;
+        ctx.doc[key] = value;
+        patch[key] = cloneJson(value);
+      }
+
+      if (Object.keys(patch).length > 0) {
         state.context.documentHistory.push({
           at: new Date().toISOString(),
           source: eventName,
-          patch: { cost: data.cost },
+          patch,
           document: cloneJson(state.context.document),
         });
         maybeReactivateGuardNodes();
@@ -593,6 +837,51 @@ export async function jsonDAGWorkflow(input) {
           const isValid = validation === 'ok' && actorAllowed && lockAcquired;
           if (!isValid) {
             const reasonCode = precheck.reason || precheck.message || validation;
+            const onRejected =
+              hook.onPrecheckRejected && typeof hook.onPrecheckRejected === 'object'
+                ? hook.onPrecheckRejected
+                : null;
+            const shouldRequestNeedChanges =
+              onRejected &&
+              String(onRejected.type || '').toLowerCase() === 'need_changes';
+
+            if (shouldRequestNeedChanges) {
+              const requestedTarget = renderTemplate(
+                onRejected.targetNodeId || onRejected.returnToNodeId || '',
+                ctx
+              );
+              const resolvedTarget = resolveNeedChangesTarget(
+                node.id,
+                requestedTarget || defaultNeedChangesTarget(node.id)
+              );
+              const renderedComment = renderTemplate(
+                onRejected.comment ||
+                  `Автовозврат: precheck не пройден (${humanizeReasonCode(reasonCode)})`,
+                {
+                  ...ctx,
+                  precheck,
+                  reasonCode,
+                  node,
+                }
+              );
+              const directive = {
+                nodeId: node.id,
+                actor: onRejected.actor || 'Система precheck',
+                comment: String(renderedComment || '').trim(),
+                targetNodeId: resolvedTarget,
+                at: new Date().toISOString(),
+              };
+              requestNeedChangesRewind(directive);
+              const needChangesError = new Error(
+                `precheck need_changes: ${reasonCode}; ${humanizeReasonCode(reasonCode)}`
+              );
+              needChangesError.code = 'PRECHECK_NEED_CHANGES';
+              needChangesError.directive = directive;
+              needChangesError.precheck = precheck;
+              needChangesError.reasonCode = reasonCode;
+              throw needChangesError;
+            }
+
             throw new Error(`precheck rejected: ${reasonCode}; ${humanizeReasonCode(reasonCode)}`);
           }
         }
@@ -626,6 +915,7 @@ export async function jsonDAGWorkflow(input) {
   async function runNode(node) {
     const nodeState = state.nodes[node.id];
     if (!nodeState || nodeState.status !== 'pending') return;
+    let rewoundByRequest = false;
 
     if (abortReason) {
       markSkipped(nodeState, abortReason);
@@ -814,15 +1104,33 @@ export async function jsonDAGWorkflow(input) {
             gate: gateInfo?.data?.gate || null,
           };
 
-          if (outcome === 'rejected' || outcome === 'needs_changes') {
+          if (outcome === 'rejected') {
             if (gateFailedRequired || isRequiredApprovalNode(node.id)) {
-              abortWorkflow(outcome, {
+              abortWorkflow('rejected', {
                 nodeId: node.id,
                 outcome,
                 reason: gateFailedRequired ? 'gate_condition_failed' : 'approval_decision',
                 gate: gateInfo?.data?.gate || null,
               });
             }
+          }
+
+          if (outcome === 'needs_changes') {
+            const fallbackTarget = defaultNeedChangesTarget(node.id);
+            const directive = needChangesRequests[node.id] || {
+              nodeId: node.id,
+              actor: state.approvals[node.id].decisionActor || null,
+              comment: state.approvals[node.id].decisionComment || null,
+              targetNodeId: fallbackTarget,
+              at: new Date().toISOString(),
+            };
+            nodeState.result.rewind = {
+              targetNodeId: directive.targetNodeId,
+              targetLabel: stepName(directive.targetNodeId),
+            };
+            stepExtraCtx.rewind = nodeState.result.rewind;
+            requestNeedChangesRewind(directive);
+            delete needChangesRequests[node.id];
           }
           break;
         }
@@ -938,6 +1246,11 @@ export async function jsonDAGWorkflow(input) {
         nodeState.status = 'done';
       }
 
+      // Когда шаг-цель допзапроса успешно пройден, снимаем активную подсветку перехода.
+      if (state.context.lastNeedChanges?.targetNodeId === node.id && nodeState.status === 'done') {
+        delete state.context.lastNeedChanges;
+      }
+
       // Сохраняем параметры шага до post-hook, чтобы следующие шаги могли их использовать.
       syncNodeContext(node, nodeState, stepExtraCtx);
 
@@ -949,6 +1262,18 @@ export async function jsonDAGWorkflow(input) {
       // Обновляем snapshot после post-hook без повторного setVars.
       syncNodeContext(node, nodeState, stepExtraCtx, { applyNodeContext: false });
     } catch (err) {
+      if (err?.code === 'PRECHECK_NEED_CHANGES') {
+        resetNodeRuntime(node.id, 'precheck_need_changes');
+        rewoundByRequest = true;
+        return;
+      }
+
+      if (rewindingNodes.has(node.id)) {
+        rewindingNodes.delete(node.id);
+        rewoundByRequest = true;
+        return;
+      }
+
       if (abortReason) {
         markSkipped(nodeState, abortReason);
         nodeState.hooks.post = await executeNodeHook(node, nodeState, 'post', node.post, {
@@ -981,6 +1306,9 @@ export async function jsonDAGWorkflow(input) {
       syncNodeContext(node, nodeState, {}, { applyNodeContext: false });
       return;
     } finally {
+      if (rewoundByRequest) {
+        return;
+      }
       // Фиксируем время завершения шага в любом исходе.
       nodeState.completedAt = new Date().toISOString();
       syncNodeContext(node, nodeState, {}, { applyNodeContext: false });
@@ -991,6 +1319,10 @@ export async function jsonDAGWorkflow(input) {
   while (true) {
     if ((terminalDecision || abortReason) && running.size === 0) {
       break;
+    }
+
+    if (!abortReason && rewindRequest) {
+      applyNeedChangesRewind();
     }
 
     const ready = abortReason ? [] : readyNodes(route.nodes, state.nodes);
@@ -1004,6 +1336,7 @@ export async function jsonDAGWorkflow(input) {
           .finally(() => {
             running.delete(node.id);
             runningScopes.delete(node.id);
+            rewindingNodes.delete(node.id);
           });
         running.set(node.id, task);
       }
@@ -1034,7 +1367,9 @@ export async function jsonDAGWorkflow(input) {
     // Нормальное завершение процесса.
     state.status = abortReason || terminalDecision || 'completed';
   }
-  if (!state.statusMessage) {
+  if (state.status === 'completed') {
+    state.statusMessage = buildStatusMessage('completed');
+  } else if (!state.statusMessage) {
     state.statusMessage = buildStatusMessage(state.status, state.abort || {});
   }
   state.completedAt = new Date().toISOString();

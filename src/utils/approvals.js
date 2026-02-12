@@ -20,10 +20,15 @@ export function initApprovalState({ required = 2, members = [] } = {}) {
 
 // Нормализует UI-синонимы решений в внутренние значения.
 export function normalizeApprovalDecision(decision) {
+  if (decision === 'approve') return 'approve';
   if (decision === 'accept') return 'approve';
   if (decision === 'accepted') return 'approve';
+  if (decision === 'reject') return 'reject';
   if (decision === 'decline') return 'reject';
   if (decision === 'rejected') return 'reject';
+  if (decision === 'need_changes') return 'needs_changes';
+  if (decision === 'needs-change') return 'needs_changes';
+  if (decision === 'needs changes') return 'needs_changes';
   return decision;
 }
 

@@ -11,7 +11,7 @@ Workflow командировки: approvals, child workflows, ожидание 
 
 ## Полный curl: старт процесса
 ```bash
-curl -X POST http://localhost:3000/process/start \
+curl -X POST http://localhost:3007/process/start \
   -H 'content-type: application/json' \
   -d '{
     "tripId": "001",
@@ -60,17 +60,17 @@ curl -X POST http://localhost:3000/process/start \
 
 ## Полный curl: approval + event + progress
 ```bash
-curl -X POST http://localhost:3000/process/trip-001/approval \
+curl -X POST http://localhost:3007/process/trip-001/approval \
   -H 'content-type: application/json' \
   -d '{ "nodeId": "manager.approval", "actor": "manager1", "decision": "approve" }'
 
-curl -X POST http://localhost:3000/process/trip-001/event \
+curl -X POST http://localhost:3007/process/trip-001/event \
   -H 'content-type: application/json' \
   -d '{ "eventName": "REPORT_SUBMITTED", "data": { "by": "traveler" } }'
 
-curl http://localhost:3000/process/trip-001/progress
+curl http://localhost:3007/process/trip-001/progress
 ```
 
 ## Demo UI
-- Page: `http://localhost:3000/ui/trip`
+- Page: `http://localhost:3007/ui/trip`
 - UI runs on the same host/port as API.

@@ -8,11 +8,12 @@
 - Командировки: `/Users/untrue/Repo/chatgpt_code/temportal/docs/README-trip-workflow.md`
 
 ## Demo UI
-- UI раздается из API (тот же порт, по умолчанию `3000`).
-- Главная страница: `http://localhost:3000/ui`
-- Документооборот: `http://localhost:3000/ui/doc`
-- Service Desk: `http://localhost:3000/ui/tickets`
-- Командировки: `http://localhost:3000/ui/trip`
+- UI раздается из API (тот же порт, по умолчанию `3007`).
+- Главная страница: `http://localhost:3007/ui`
+- Шаблоны документов: `http://localhost:3007/ui/doc-templates`
+- Документооборот: `http://localhost:3007/ui/doc`
+- Service Desk: `http://localhost:3007/ui/tickets`
+- Командировки: `http://localhost:3007/ui/trip`
 - Реализация UI: `lit-element` (через ESM import в браузере).
 
 ## Архитектура
@@ -26,7 +27,13 @@ Handlers endpoints (в API и в optional standalone handlers app):
 - `POST /sd/:action` (service desk)
 - `POST /trip/:action` (командировки)
 
+Template endpoints:
+- `GET /workflows/doc/templates`
+- `GET /workflows/doc/templates/:docType`
+- `PUT /workflows/doc/templates/:docType`
+
 ## Быстрый старт
+0. Скопируйте `.env.example` → `.env` и при необходимости измените значения (дефолтный порт `3007`).
 1. Убедитесь, что Temporal Server доступен на `localhost:7233`.
 2. Установите зависимости:
 
@@ -40,7 +47,7 @@ npm install
 npm run worker
 ```
 
-4. Запустите API (по умолчанию порт 3000):
+4. Запустите API (по умолчанию порт 3007):
 
 ```bash
 npm run api
@@ -49,14 +56,14 @@ npm run api
 5. Откройте demo UI:
 
 ```bash
-open http://localhost:3000/ui
+open http://localhost:3007/ui
 ```
 
 ## Переменные окружения
 - `TEMPORAL_ADDRESS` (по умолчанию `localhost:7233`)
 - `TEMPORAL_NAMESPACE` (по умолчанию `default`)
 - `TASK_QUEUE` (по умолчанию `temportal`)
-- `PORT` (API, по умолчанию `3000`)
+- `PORT` (API, по умолчанию `3007`)
 - `API_BASE_URL` (опционально; base URL API для встроенных handlers, по умолчанию `http://localhost:${PORT}`)
 - `APP_URL` (base URL для doc handlers, по умолчанию `${API_BASE_URL}/handlers`)
 - `SD_APP_URL` (base URL для service desk handlers, по умолчанию `${API_BASE_URL}/sd`)
@@ -116,7 +123,7 @@ docker run --rm -p 8080:8080 \
 - `child.start`: `workflowType`, `input`
 
 **Важно:** API возвращает `workflowId` вида `doc-<docId>`, `ticket-<ticketId>`, `trip-<tripId>`. Используйте его для сигналов и запросов состояния.
-Для `approval.kofn`: `decline` в `required=true` останавливает workflow, в `required=false` workflow продолжается.
+Для `approval.kofn`: `decline` в `required=true` останавливает workflow; `need_changes` не завершает workflow и возвращает процесс на доработку.
 
 ## Кейc 1 — Документооборот / согласование (JSON DAG)
 Подробный сложный пример на 7 шагов (sequential + parallel + `pre`/`post` hooks + Kafka snapshot post-hook) см. `docs/README-doc-workflow.md`.
@@ -141,7 +148,7 @@ docker run --rm -p 8080:8080 \
 **Запуск:**
 
 ```bash
-curl -X POST http://localhost:3000/workflows/doc/start \
+curl -X POST http://localhost:3007/workflows/doc/start \
   -H 'content-type: application/json' \
   -d '{
     "docId": "001",
@@ -161,14 +168,31 @@ curl -X POST http://localhost:3000/workflows/doc/start \
   }'
 ```
 
+**Запуск по типу документа (без передачи route):**
+
+```bash
+curl -X POST http://localhost:3007/workflows/doc/start \
+  -H 'content-type: application/json' \
+  -d '{
+    "docType": "candidate_hiring",
+    "docId": "001-typed",
+    "doc": { "cost": 150, "title": "NDA", "candidateId": "001-typed", "documents": ["passport", "consent"] }
+  }'
+```
+
+Шаблоны доступны через:
+- `GET /workflows/doc/templates`
+- `GET /workflows/doc/templates/:docType`
+- `PUT /workflows/doc/templates/:docType`
+
 **Approval (2-of-N):**
 
 ```bash
-curl -X POST http://localhost:3000/workflows/doc/doc-001/approval \
+curl -X POST http://localhost:3007/workflows/doc/doc-001/approval \
   -H 'content-type: application/json' \
   -d '{ "nodeId": "legal.approval", "actor": "alice", "decision": "accept" }'
 
-curl -X POST http://localhost:3000/workflows/doc/doc-001/approval \
+curl -X POST http://localhost:3007/workflows/doc/doc-001/approval \
   -H 'content-type: application/json' \
   -d '{ "nodeId": "legal.approval", "actor": "bob", "decision": "accept" }'
 ```
@@ -176,24 +200,42 @@ curl -X POST http://localhost:3000/workflows/doc/doc-001/approval \
 **Decline (глобальный stop):**
 
 ```bash
-curl -X POST http://localhost:3000/workflows/doc/doc-001/approval \
+curl -X POST http://localhost:3007/workflows/doc/doc-001/approval \
   -H 'content-type: application/json' \
   -d '{ "nodeId": "legal.approval", "actor": "bob", "decision": "decline", "comment": "Missing legal clause 4.2" }'
 ```
 
 При `decline` на `required=true` workflow завершается со статусом `rejected`; для `decline` нужен `comment`.
 
+**Need changes (возврат на доработку, workflow продолжает работу):**
+
+```bash
+curl -X POST http://localhost:3007/workflows/doc/doc-001/approval \
+  -H 'content-type: application/json' \
+  -d '{ "nodeId": "legal.approval", "actor": "bob", "decision": "need_changes", "comment": "Не хватает документов по безопасности", "returnToNodeId": "legal.review" }'
+```
+
+`returnToNodeId` опционален. Если не указан, workflow возвращается на предыдущий шаг автоматически.
+
+**Самоотказ кандидата (независимый сигнал, статус withdrawn):**
+
+```bash
+curl -X POST http://localhost:3007/workflows/doc/doc-001/self-withdraw \
+  -H 'content-type: application/json' \
+  -d '{ "actor": "candidate", "reason": "Не дождался решения, принял контроффер" }'
+```
+
 **Progress:**
 
 ```bash
-curl http://localhost:3000/workflows/doc/doc-001/progress
+curl http://localhost:3007/workflows/doc/doc-001/progress
 ```
 
 ## Кейc 2 — Service Desk (1 тикет = 1 workflow)
 **Старт тикета:**
 
 ```bash
-curl -X POST http://localhost:3000/tickets/start \
+curl -X POST http://localhost:3007/tickets/start \
   -H 'content-type: application/json' \
   -d '{
     "ticketId": "100",
@@ -205,15 +247,15 @@ curl -X POST http://localhost:3000/tickets/start \
 **События через signal:**
 
 ```bash
-curl -X POST http://localhost:3000/tickets/ticket-100/event \
+curl -X POST http://localhost:3007/tickets/ticket-100/event \
   -H 'content-type: application/json' \
   -d '{ "type": "ASSIGN", "actor": "dispatcher" }'
 
-curl -X POST http://localhost:3000/tickets/ticket-100/event \
+curl -X POST http://localhost:3007/tickets/ticket-100/event \
   -H 'content-type: application/json' \
   -d '{ "type": "AGENT_RESPONDED", "actor": "agent1" }'
 
-curl -X POST http://localhost:3000/tickets/ticket-100/event \
+curl -X POST http://localhost:3007/tickets/ticket-100/event \
   -H 'content-type: application/json' \
   -d '{ "type": "RESOLVE", "actor": "agent1" }'
 ```
@@ -221,7 +263,7 @@ curl -X POST http://localhost:3000/tickets/ticket-100/event \
 **Состояние:**
 
 ```bash
-curl http://localhost:3000/tickets/ticket-100/state
+curl http://localhost:3007/tickets/ticket-100/state
 ```
 
 **SLA breach (демо):**
@@ -277,7 +319,7 @@ curl http://localhost:3000/tickets/ticket-100/state
 **Старт процесса:**
 
 ```bash
-curl -X POST http://localhost:3000/process/start \
+curl -X POST http://localhost:3007/process/start \
   -H 'content-type: application/json' \
   -d '{
     "tripId": "001",
@@ -327,7 +369,7 @@ curl -X POST http://localhost:3000/process/start \
 **Approval:**
 
 ```bash
-curl -X POST http://localhost:3000/process/trip-001/approval \
+curl -X POST http://localhost:3007/process/trip-001/approval \
   -H 'content-type: application/json' \
   -d '{ "nodeId": "manager.approval", "actor": "manager1", "decision": "approve" }'
 ```
@@ -335,7 +377,7 @@ curl -X POST http://localhost:3000/process/trip-001/approval \
 **REPORT_SUBMITTED:**
 
 ```bash
-curl -X POST http://localhost:3000/process/trip-001/event \
+curl -X POST http://localhost:3007/process/trip-001/event \
   -H 'content-type: application/json' \
   -d '{ "eventName": "REPORT_SUBMITTED", "data": { "by": "traveler" } }'
 ```
@@ -343,7 +385,7 @@ curl -X POST http://localhost:3000/process/trip-001/event \
 **Progress:**
 
 ```bash
-curl http://localhost:3000/process/trip-001/progress
+curl http://localhost:3007/process/trip-001/progress
 ```
 
 **Для тестов можно укоротить таймеры:**

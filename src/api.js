@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import Fastify from 'fastify';
 import { Connection, Client } from '@temporalio/client';
 import { fileURLToPath } from 'url';
@@ -5,6 +6,11 @@ import { readFile } from 'fs/promises';
 import path from 'path';
 import { TASK_QUEUE, TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE } from './config.js';
 import { registerHandlersRoutes } from './handlersRoutes.js';
+import {
+  createDocTemplateRegistry,
+  normalizeDocType,
+  validateDocRoute,
+} from './utils/docTemplates.js';
 
 // Абсолютный путь до папки UI-страниц.
 const UI_ROOT = fileURLToPath(new URL('./ui', import.meta.url));
@@ -18,6 +24,8 @@ const PAGE_FILES = {
   '/ui/index.html': 'index.html',
   '/ui/doc': 'doc.html',
   '/ui/doc/': 'doc.html',
+  '/ui/doc-templates': 'doc-templates.html',
+  '/ui/doc-templates/': 'doc-templates.html',
   '/ui/tickets': 'tickets.html',
   '/ui/tickets/': 'tickets.html',
   '/ui/trip': 'trip.html',
@@ -28,6 +36,7 @@ const PAGE_FILES = {
 const ASSET_FILES = {
   'ui.css': 'text/css; charset=utf-8',
   'doc-app.js': 'application/javascript; charset=utf-8',
+  'doc-templates-app.js': 'application/javascript; charset=utf-8',
   'ticket-app.js': 'application/javascript; charset=utf-8',
   'trip-app.js': 'application/javascript; charset=utf-8',
 };
@@ -35,11 +44,11 @@ const ASSET_FILES = {
 // Строит конфиг URL-ов handlers app (doc/sd/trip).
 function buildHandlersConfig() {
   // По умолчанию handlers встроены в API на том же порту.
-  const apiPort = Number(process.env.PORT || 3000);
+  const apiPort = Number(process.env.PORT || 3007);
   // Явно задаваемый базовый URL API (удобно для прокси/докера).
   const apiBaseUrl =
     process.env.API_BASE_URL ||
-    (Number.isFinite(apiPort) ? `http://localhost:${apiPort}` : 'http://localhost:3000');
+    (Number.isFinite(apiPort) ? `http://localhost:${apiPort}` : 'http://localhost:3007');
   return {
     doc: process.env.APP_URL || `${apiBaseUrl}/handlers`,
     sd: process.env.SD_APP_URL || `${apiBaseUrl}/sd`,
@@ -50,20 +59,35 @@ function buildHandlersConfig() {
 
 // Базовая валидация входного DSL-маршрута.
 function ensureRoute(route) {
-  if (!route || !Array.isArray(route.nodes)) {
-    const err = new Error('route.nodes is required');
+  try {
+    validateDocRoute(route);
+  } catch (error) {
+    const err = new Error(error?.message || 'route.nodes is required');
     err.statusCode = 400;
     throw err;
   }
 }
 
-// Для decline/reject требуем непустой комментарий причины.
+// Для негативных решений требуем непустой комментарий причины.
 function validateApprovalComment(decision, comment) {
-  const normalized = decision === 'decline' ? 'reject' : decision;
+  const normalized =
+    decision === 'decline'
+      ? 'reject'
+      : decision === 'need_changes'
+        ? 'needs_changes'
+        : decision;
   const negative = normalized === 'reject' || normalized === 'needs_changes';
   if (!negative) return null;
   if (typeof comment === 'string' && comment.trim().length > 0) return null;
-  const err = new Error('comment is required for decline');
+  const err = new Error('comment is required for decline or need_changes');
+  err.statusCode = 400;
+  return err;
+}
+
+// Для сигнала самоотказа обязателен непустой reason.
+function validateSelfWithdrawReason(reason) {
+  if (typeof reason === 'string' && reason.trim().length > 0) return null;
+  const err = new Error('reason is required for self-withdraw');
   err.statusCode = 400;
   return err;
 }
@@ -150,6 +174,8 @@ export async function buildApi() {
   const client = new Client({ connection, namespace: TEMPORAL_NAMESPACE });
   // In-memory fallback реестр doc-workflow id в рамках процесса API.
   const docWorkflowIds = new Set();
+  // Реестр шаблонов маршрутов по типам документов.
+  const docTemplateRegistry = createDocTemplateRegistry();
 
   // Корректно закрываем TCP-соединение с Temporal при остановке API.
   app.addHook('onClose', async () => {
@@ -163,6 +189,50 @@ export async function buildApi() {
 
   // Регистрируем встроенные handlers endpoint-ы (в одном процессе с API).
   registerHandlersRoutes(app);
+
+  // Список доступных шаблонов document workflow по типу документа.
+  app.get('/workflows/doc/templates', async (_, reply) => {
+    reply.send({ items: docTemplateRegistry.list() });
+  });
+
+  // Получение конкретного шаблона document workflow по docType.
+  app.get('/workflows/doc/templates/:docType', async (req, reply) => {
+    const { docType } = req.params;
+    const normalizedType = normalizeDocType(docType);
+    if (!normalizedType) {
+      reply.code(400).send({ error: 'invalid docType' });
+      return;
+    }
+    const template = docTemplateRegistry.get(normalizedType);
+    if (!template) {
+      reply.code(404).send({ error: `template for docType "${normalizedType}" not found` });
+      return;
+    }
+    reply.send(template);
+  });
+
+  // Обновление/создание шаблона document workflow по docType.
+  app.put('/workflows/doc/templates/:docType', async (req, reply) => {
+    try {
+      const { docType } = req.params;
+      const body = req.body || {};
+      const normalizedType = normalizeDocType(docType);
+      if (!normalizedType) {
+        reply.code(400).send({ error: 'invalid docType' });
+        return;
+      }
+      ensureRoute(body.route);
+      const saved = docTemplateRegistry.upsert({
+        docType: normalizedType,
+        name: body.name,
+        description: body.description,
+        route: body.route,
+      });
+      reply.send({ ok: true, template: saved });
+    } catch (error) {
+      reply.code(error?.statusCode || 400).send({ error: error?.message || 'failed to save template' });
+    }
+  });
 
   // Регистрируем все UI-страницы.
   for (const [routePath, fileName] of Object.entries(PAGE_FILES)) {
@@ -186,7 +256,30 @@ export async function buildApi() {
   app.post('/workflows/doc/start', async (req, reply) => {
     try {
       const body = req.body || {};
-      ensureRoute(body.route);
+      const explicitDocTypeProvided = Object.prototype.hasOwnProperty.call(body, 'docType');
+      const normalizedType = normalizeDocType(body.docType || 'candidate_hiring');
+      if (explicitDocTypeProvided && !normalizedType) {
+        reply.code(400).send({ error: 'invalid docType' });
+        return;
+      }
+      const docType = normalizedType || 'candidate_hiring';
+
+      let route = body.route;
+      let templateMeta = null;
+      if (route) {
+        ensureRoute(route);
+      } else {
+        const template = docTemplateRegistry.get(docType);
+        if (!template) {
+          reply.code(404).send({ error: `template for docType "${docType}" not found` });
+          return;
+        }
+        route = template.route;
+        templateMeta = {
+          name: template.name,
+          updatedAt: template.updatedAt,
+        };
+      }
 
       // Если docId не передан, генерируем UUID.
       const docId = body.docId || globalThis.crypto.randomUUID();
@@ -196,13 +289,16 @@ export async function buildApi() {
       const context = {
         ...(body.context || {}),
         docHandlers: handlers.doc,
+        docType,
+        routeTemplateName: templateMeta?.name || null,
+        routeTemplateUpdatedAt: templateMeta?.updatedAt || null,
       };
       const input = {
         processType: 'doc',
         docId,
         doc: body.doc || {},
         context,
-        route: body.route,
+        route,
         handlers,
       };
 
@@ -213,7 +309,12 @@ export async function buildApi() {
         workflowId: `doc-${docId}`,
       });
       docWorkflowIds.add(handle.workflowId);
-      reply.send({ workflowId: handle.workflowId, runId: handle.firstExecutionRunId });
+      reply.send({
+        workflowId: handle.workflowId,
+        runId: handle.firstExecutionRunId,
+        docType,
+        routeTemplateName: templateMeta?.name || null,
+      });
     } catch (error) {
       sendTemporalError(reply, error);
     }
@@ -330,7 +431,7 @@ export async function buildApi() {
     try {
       const { id } = req.params;
       const body = req.body || {};
-      // Валидация обязательного комментария для decline.
+      // Валидация обязательного комментария для негативных решений.
       const validationError = validateApprovalComment(body.decision, body.comment);
       if (validationError) {
         reply.code(validationError.statusCode || 400).send({ error: validationError.message });
@@ -342,6 +443,7 @@ export async function buildApi() {
         actor: body.actor,
         decision: body.decision,
         comment: body.comment,
+        returnToNodeId: body.returnToNodeId,
       });
       docWorkflowIds.add(id);
       reply.send({ ok: true });
@@ -359,6 +461,28 @@ export async function buildApi() {
       await handle.signal('processEvent', {
         eventName: body.eventName,
         data: body.data || {},
+      });
+      docWorkflowIds.add(id);
+      reply.send({ ok: true });
+    } catch (error) {
+      sendTemporalError(reply, error);
+    }
+  });
+
+  // Независимый сигнал самоотказа кандидата: завершает процесс.
+  app.post('/workflows/doc/:id/self-withdraw', async (req, reply) => {
+    try {
+      const { id } = req.params;
+      const body = req.body || {};
+      const validationError = validateSelfWithdrawReason(body.reason);
+      if (validationError) {
+        reply.code(validationError.statusCode || 400).send({ error: validationError.message });
+        return;
+      }
+      const handle = client.workflow.getHandle(id);
+      await handle.signal('selfWithdraw', {
+        actor: body.actor || 'candidate',
+        reason: body.reason,
       });
       docWorkflowIds.add(id);
       reply.send({ ok: true });
@@ -504,6 +628,23 @@ export async function buildApi() {
     reply.send({ ok: true });
   });
 
+  // Независимый сигнал самоотказа для process/trip workflow.
+  app.post('/process/:id/self-withdraw', async (req, reply) => {
+    const { id } = req.params;
+    const body = req.body || {};
+    const validationError = validateSelfWithdrawReason(body.reason);
+    if (validationError) {
+      reply.code(validationError.statusCode || 400).send({ error: validationError.message });
+      return;
+    }
+    const handle = client.workflow.getHandle(id);
+    await handle.signal('selfWithdraw', {
+      actor: body.actor || 'candidate',
+      reason: body.reason,
+    });
+    reply.send({ ok: true });
+  });
+
   // Query прогресса trip/process workflow.
   app.get('/process/:id/progress', async (req, reply) => {
     const { id } = req.params;
@@ -519,7 +660,7 @@ export async function buildApi() {
 // CLI-режим запуска API как отдельного процесса.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const app = await buildApi();
-  const port = Number(process.env.PORT || 3000);
+  const port = Number(process.env.PORT || 3007);
   await app.listen({ port, host: '0.0.0.0' });
   app.log.info(`API listening on ${port}`);
 }

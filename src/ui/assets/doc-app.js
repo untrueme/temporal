@@ -6,17 +6,34 @@ class DocWorkflowDemo extends LitElement {
   // Реактивные свойства компонента.
   static properties = {
     docId: { type: String },
+    docType: { type: String },
     title: { type: String },
     cost: { type: Number },
     workflowId: { type: String },
     actor: { type: String },
     decision: { type: String },
     comment: { type: String },
+    returnToNodeId: { type: String },
+    showStartModal: { state: true },
+    modalMode: { type: String },
+    modalWorkflowId: { type: String },
+    updateCostValue: { type: Number },
+    startDocumentsText: { type: String },
+    updateDocumentsText: { type: String },
+    selfWithdrawReason: { type: String },
+    resultView: { type: String },
     nodeId: { type: String },
     selectedNodeId: { type: String },
     output: { state: true },
     workflowItems: { state: true },
     workflowChildren: { state: true },
+    templateItems: { state: true },
+    templateName: { type: String },
+    templateDescription: { type: String },
+    routeDraft: { state: true },
+    editorNodeId: { type: String },
+    editorStepJson: { type: String },
+    editorErrorText: { state: true },
     toasts: { state: true },
     errorText: { state: true },
     busy: { state: true },
@@ -160,7 +177,7 @@ class DocWorkflowDemo extends LitElement {
       min-height: 0;
       height: 100%;
       display: grid;
-      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-rows: minmax(0, 1fr);
       gap: 12px;
       overflow: hidden;
     }
@@ -186,6 +203,40 @@ class DocWorkflowDemo extends LitElement {
       height: 100%;
       max-height: 100%;
       overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .signal-panel {
+      min-height: 0;
+      overflow: hidden;
+      padding: 9px;
+      gap: 6px;
+    }
+
+    .signal-panel label {
+      font-size: 0.72rem;
+      margin-top: 0;
+    }
+
+    .signal-panel input,
+    .signal-panel select,
+    .signal-panel button {
+      height: 34px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      padding: 0 9px;
+    }
+
+    .signal-panel .decision-btn {
+      height: 34px;
+      border-radius: 8px;
+    }
+
+    .signal-panel .hint {
+      font-size: 0.72rem;
+      line-height: 1.25;
     }
 
     .workflows-list {
@@ -196,6 +247,13 @@ class DocWorkflowDemo extends LitElement {
       min-height: 0;
       overflow: auto;
       padding-right: 2px;
+    }
+
+    .actions-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      min-width: 0;
     }
 
     .wf-tree {
@@ -330,6 +388,7 @@ class DocWorkflowDemo extends LitElement {
     }
 
     .wf-status.rejected,
+    .wf-status.withdrawn,
     .wf-status.failed,
     .wf-status.terminated,
     .wf-status.canceled,
@@ -337,6 +396,12 @@ class DocWorkflowDemo extends LitElement {
       background: #fae4e4;
       color: #9a3232;
       border-color: #efb7b7;
+    }
+
+    .wf-status.needs_changes {
+      background: #fff4dc;
+      color: #8a5d11;
+      border-color: #e7c47a;
     }
 
     .wf-status.continued_as_new,
@@ -438,7 +503,7 @@ class DocWorkflowDemo extends LitElement {
 
     .decision-row {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 6px;
       min-width: 0;
     }
@@ -458,6 +523,12 @@ class DocWorkflowDemo extends LitElement {
       background: #dff8e9;
       border-color: #27a95e;
       color: #1f7e47;
+    }
+
+    .decision-btn.active.need_changes {
+      background: #fff4dc;
+      border-color: #d6a64c;
+      color: #8a5d11;
     }
 
     .decision-btn.active.decline {
@@ -550,8 +621,20 @@ class DocWorkflowDemo extends LitElement {
       background: #e45454;
     }
 
+    .legend .warn i {
+      background: #d8aa2f;
+    }
+
     .legend .skip i {
       background: #8f9cb7;
+    }
+
+    .legend .rewind-source i {
+      background: #d89c2f;
+    }
+
+    .legend .rewind-target i {
+      background: #4e7bff;
     }
 
     .graph-info {
@@ -617,6 +700,91 @@ class DocWorkflowDemo extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 8px;
+    }
+
+    .result-view-switch {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .view-btn {
+      height: 32px;
+      border-radius: 8px;
+      background: #f0f3fb;
+      color: #243768;
+      border: 1px solid rgba(36, 67, 132, 0.2);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .view-btn.active {
+      background: linear-gradient(120deg, #4c65e0, #3252d6);
+      color: #fff;
+      border: 0;
+    }
+
+    .history-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    .history-item {
+      border: 1px solid rgba(40, 67, 132, 0.16);
+      border-radius: 10px;
+      background: #f8faff;
+      padding: 8px 9px;
+      display: grid;
+      gap: 5px;
+    }
+
+    .history-head {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 7px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .history-index {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: #1e325d;
+      background: #dde5f8;
+      border: 1px solid rgba(36, 67, 132, 0.22);
+    }
+
+    .history-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #1a2b51;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .history-time {
+      font-size: 0.7rem;
+      color: #61719a;
+      white-space: nowrap;
+    }
+
+    .history-details {
+      font-size: 0.76rem;
+      line-height: 1.35;
+      color: #2e406a;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
     .status {
@@ -704,6 +872,134 @@ class DocWorkflowDemo extends LitElement {
       cursor: pointer;
     }
 
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(17, 28, 56, 0.34);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+    }
+
+    .modal-card {
+      width: min(560px, 100%);
+      max-height: min(86vh, 900px);
+      overflow: auto;
+      background: #ffffff;
+      border-radius: 14px;
+      border: 1px solid rgba(36, 67, 132, 0.22);
+      box-shadow: 0 20px 48px rgba(21, 34, 66, 0.34);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .modal-head h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .modal-close {
+      width: auto;
+      min-width: 40px;
+      padding: 0 10px;
+      background: #f0f3fb;
+      color: #314369;
+      border: 1px solid rgba(36, 67, 132, 0.22);
+      font-weight: 700;
+    }
+
+    .modal-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .modal-tab {
+      background: #f4f7ff;
+      color: #203056;
+      border: 1px solid rgba(36, 67, 132, 0.24);
+    }
+
+    .modal-tab.active {
+      background: linear-gradient(120deg, #4c65e0, #3252d6);
+      color: #fff;
+      border: 0;
+    }
+
+    .modal-section {
+      border: 1px solid rgba(40, 67, 132, 0.17);
+      border-radius: 12px;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      background: rgba(247, 250, 255, 0.78);
+    }
+
+    .modal-inline {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .step-chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-height: 128px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .step-chip {
+      width: auto;
+      min-width: 90px;
+      height: 30px;
+      padding: 0 10px;
+      border-radius: 16px;
+      border: 1px solid rgba(36, 67, 132, 0.22);
+      background: #f4f7ff;
+      color: #203056;
+      font-size: 0.76rem;
+      font-weight: 600;
+    }
+
+    .step-chip.active {
+      background: linear-gradient(120deg, #4c65e0, #3252d6);
+      border-color: transparent;
+      color: #fff;
+    }
+
+    .inline-checkbox {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin: 0;
+    }
+
+    textarea {
+      width: 100%;
+      border: 1px solid #c8d2ea;
+      border-radius: 10px;
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.76rem;
+      color: #182748;
+      resize: vertical;
+      min-height: 120px;
+      background: #fff;
+    }
+
     @media (max-width: 700px) {
       .workspace-row {
         grid-template-columns: 1fr;
@@ -716,6 +1012,14 @@ class DocWorkflowDemo extends LitElement {
       }
 
       .control-row {
+        grid-template-columns: 1fr;
+      }
+
+      .actions-row {
+        grid-template-columns: 1fr;
+      }
+
+      .modal-inline {
         grid-template-columns: 1fr;
       }
 
@@ -733,17 +1037,34 @@ class DocWorkflowDemo extends LitElement {
   constructor() {
     super();
     this.docId = 'cand-001';
+    this.docType = 'candidate_hiring';
     this.title = 'Иван Петров';
     this.cost = 140;
     this.workflowId = '';
     this.actor = '';
     this.decision = 'accept';
     this.comment = '';
+    this.returnToNodeId = '';
+    this.showStartModal = false;
+    this.modalMode = 'start';
+    this.modalWorkflowId = '';
+    this.updateCostValue = 140;
+    this.startDocumentsText = 'passport';
+    this.updateDocumentsText = 'passport';
+    this.selfWithdrawReason = '';
+    this.resultView = 'json';
     this.nodeId = 'recruiter.approval';
     this.selectedNodeId = 'recruiter.approval';
     this.output = null;
     this.workflowItems = [];
     this.workflowChildren = {};
+    this.templateItems = [];
+    this.templateName = '';
+    this.templateDescription = '';
+    this.routeDraft = null;
+    this.editorNodeId = '';
+    this.editorStepJson = '';
+    this.editorErrorText = '';
     this.toasts = [];
     this.errorText = '';
     this.busy = false;
@@ -751,25 +1072,418 @@ class DocWorkflowDemo extends LitElement {
     this.lastReasonToastKey = '';
     this.navigationStack = [];
     this.childParentMap = {};
+    this.autoRefreshTimer = null;
+    this.autoRefreshInFlight = false;
+    this.autoRefreshTickCount = 0;
+    this.transitionRefreshUntil = 0;
+    this.lastAutoRefreshErrorAt = 0;
   }
 
   // При монтировании подгружаем список уже запущенных workflow.
   connectedCallback() {
     super.connectedCallback();
+    this.loadTemplateCatalog({ initial: true });
     this.refreshWorkflowList({ silent: true });
+    this.startAutoRefresh();
   }
 
-  // Доступные варианты decision (сокращены до accept/decline).
+  // Чистим таймеры при размонтировании компонента.
+  disconnectedCallback() {
+    this.stopAutoRefresh();
+    super.disconnectedCallback();
+  }
+
+  // Запускает фоновый авто-рефреш прогресса.
+  startAutoRefresh() {
+    if (this.autoRefreshTimer) return;
+    this.autoRefreshTimer = globalThis.setInterval(() => {
+      this.autoRefreshTick();
+    }, 900);
+  }
+
+  // Останавливает фоновый авто-рефреш прогресса.
+  stopAutoRefresh() {
+    if (!this.autoRefreshTimer) return;
+    globalThis.clearInterval(this.autoRefreshTimer);
+    this.autoRefreshTimer = null;
+  }
+
+  // Включает ускоренный авто-рефреш после переходов/сигналов.
+  requestTransitionRefresh(durationMs = 7000) {
+    const until = Date.now() + Math.max(500, durationMs);
+    this.transitionRefreshUntil = Math.max(this.transitionRefreshUntil || 0, until);
+  }
+
+  // Один шаг фонового авто-обновления.
+  async autoRefreshTick() {
+    if (this.autoRefreshInFlight) return;
+    if (this.busy) return;
+    if (!this.workflowId) return;
+
+    const status = String(this.output?.status || '').toLowerCase();
+    const runningLike = !status || status === 'running';
+    const boosted = Date.now() < (this.transitionRefreshUntil || 0);
+    if (!runningLike && !boosted) return;
+
+    this.autoRefreshInFlight = true;
+    this.autoRefreshTickCount += 1;
+    try {
+      await this.loadProgress(this.workflowId);
+
+      const shouldRefreshList = boosted || this.autoRefreshTickCount % 4 === 0;
+      if (shouldRefreshList) {
+        await this.refreshWorkflowList({ silent: true });
+      }
+    } catch (error) {
+      const transient = this.isProgressQueryError(error);
+      if (!transient) {
+        const now = Date.now();
+        // Ограничиваем частоту ошибок в toast, чтобы не спамить.
+        if (now - this.lastAutoRefreshErrorAt > 6000) {
+          this.lastAutoRefreshErrorAt = now;
+          this.showToast(this.formatErrorMessage(error));
+        }
+      }
+    } finally {
+      this.autoRefreshInFlight = false;
+    }
+  }
+
+  // Открывает модальное окно управления процессом (старт/изменение оклада).
+  openProcessModal(mode = 'start') {
+    this.modalMode = mode;
+    this.modalWorkflowId = this.workflowId || `doc-${this.docId}`;
+    this.updateCostValue = Number(this.cost || 0);
+    this.ensureRouteDraftState();
+    const runtimeDocs = this.output?.context?.document?.documents;
+    this.updateDocumentsText = this.documentsToInput(runtimeDocs || this.parseDocumentsInput(this.startDocumentsText)).join(', ');
+    this.showStartModal = true;
+  }
+
+  // Закрывает модальное окно управления процессом.
+  closeProcessModal() {
+    this.showStartModal = false;
+  }
+
+  // Запускает workflow из модального окна.
+  async startWorkflowFromModal() {
+    const previousWorkflowId = this.workflowId;
+    await this.startWorkflow();
+    if (this.workflowId && this.workflowId !== previousWorkflowId) {
+      this.modalWorkflowId = this.workflowId;
+      this.updateCostValue = Number(this.cost || 0);
+      this.updateDocumentsText = this.documentsToInput(this.parseDocumentsInput(this.startDocumentsText)).join(', ');
+      this.showStartModal = false;
+    }
+  }
+
+  // Применяет изменение оклада из модального окна.
+  async applySalaryFromModal() {
+    await this.run(async () => {
+      const workflowId = (this.modalWorkflowId || this.workflowId || `doc-${this.docId}`).trim();
+      if (!workflowId) {
+        throw new Error('workflowId is required to update salary');
+      }
+      const documents = this.parseDocumentsInput(this.updateDocumentsText);
+      await this.request(`/workflows/doc/${workflowId}/event`, {
+        method: 'POST',
+        body: JSON.stringify({
+          eventName: 'DOC_UPDATE',
+          data: {
+            cost: Number(this.updateCostValue),
+            documents,
+          },
+        }),
+      });
+      this.workflowId = workflowId;
+      await this.loadProgress(workflowId);
+      this.requestTransitionRefresh(7000);
+      this.focusFirstSelectableApproval();
+      await this.refreshWorkflowList({ silent: true });
+    });
+  }
+
+  // Нормализует список документов из строки ввода.
+  parseDocumentsInput(input) {
+    const normalizeOne = (value) => {
+      const token = String(value || '').trim().toLowerCase();
+      if (!token) return '';
+      if (token === 'паспорт') return 'passport';
+      if (
+        token === 'consent' ||
+        token === 'privacy_consent' ||
+        token === 'согласие' ||
+        token === 'согласие_на_обработку_данных'
+      ) {
+        return 'consent';
+      }
+      return token;
+    };
+
+    const docs = String(input || '')
+      .split(',')
+      .map((part) => normalizeOne(part))
+      .filter(Boolean);
+
+    return [...new Set(docs)];
+  }
+
+  // Нормализует документы из runtime-документа в строку для UI.
+  documentsToInput(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (item && typeof item === 'object') {
+            return String(item.type || item.name || item.id || '').trim();
+          }
+          return '';
+        })
+        .filter(Boolean);
+    }
+    return String(value)
+      .split(',')
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+  }
+
+  // Защитный clone для локальной работы с route JSON.
+  cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  // Узлы текущего редактируемого маршрута.
+  get editorNodes() {
+    return Array.isArray(this.routeDraft?.nodes) ? this.routeDraft.nodes : [];
+  }
+
+  // Текущий выбранный шаг в редакторе.
+  get selectedEditorNode() {
+    return this.editorNodes.find((node) => node.id === this.editorNodeId) || null;
+  }
+
+  // Держим routeDraft и editor selection в консистентном состоянии.
+  ensureRouteDraftState() {
+    if (!Array.isArray(this.routeDraft?.nodes)) {
+      this.routeDraft = this.cloneJson(this.route);
+    }
+    if (!this.editorNodes.length) {
+      this.editorNodeId = '';
+      this.editorStepJson = '';
+      return;
+    }
+    if (!this.selectedEditorNode) {
+      this.editorNodeId = this.editorNodes[0].id;
+    }
+    this.editorStepJson = JSON.stringify(this.selectedEditorNode || {}, null, 2);
+    this.editorErrorText = '';
+  }
+
+  // Подгружает список типов документов с шаблонами маршрутов.
+  async loadTemplateCatalog({ initial = false } = {}) {
+    try {
+      const data = await this.request('/workflows/doc/templates');
+      this.templateItems = Array.isArray(data?.items) ? data.items : [];
+      const known = this.templateItems.some((item) => item.docType === this.docType);
+      const fallbackType = this.templateItems[0]?.docType || this.docType || 'candidate_hiring';
+      const nextType = known ? this.docType : fallbackType;
+      await this.loadTemplateByType(nextType, { silent: initial });
+    } catch (error) {
+      if (!initial) {
+        this.showToast(this.formatErrorMessage(error));
+      }
+      this.routeDraft = this.cloneJson(this.route);
+      this.ensureRouteDraftState();
+    }
+  }
+
+  // Загружает конкретный шаблон маршрута по типу документа.
+  async loadTemplateByType(docType, { silent = false } = {}) {
+    const normalizedType = String(docType || '').trim().toLowerCase();
+    if (!normalizedType) return;
+    try {
+      const template = await this.request(`/workflows/doc/templates/${encodeURIComponent(normalizedType)}`);
+      this.docType = template.docType || normalizedType;
+      this.templateName = template.name || this.docType;
+      this.templateDescription = template.description || '';
+      this.routeDraft = this.cloneJson(template.route || { nodes: [] });
+      this.ensureRouteDraftState();
+      this.ensureSelection();
+      this.drawGraph();
+    } catch (error) {
+      if (!silent) {
+        this.showToast(this.formatErrorMessage(error));
+      }
+    }
+  }
+
+  // Смена типа документа в форме.
+  async onDocTypeChange(event) {
+    const nextType = String(event.target.value || '')
+      .trim()
+      .toLowerCase();
+    if (!nextType) return;
+    await this.run(async () => {
+      await this.loadTemplateByType(nextType);
+    });
+  }
+
+  // Сохраняет текущий routeDraft как шаблон выбранного docType.
+  async saveTemplate() {
+    await this.run(async () => {
+      this.ensureRouteDraftState();
+      const docType = String(this.docType || '')
+        .trim()
+        .toLowerCase();
+      if (!docType) {
+        throw new Error('Укажите тип документа');
+      }
+      if (!Array.isArray(this.routeDraft?.nodes) || this.routeDraft.nodes.length === 0) {
+        throw new Error('Добавьте хотя бы один шаг в маршрут');
+      }
+      const payload = {
+        name: this.templateName || docType,
+        description: this.templateDescription || '',
+        route: this.routeDraft,
+      };
+      const data = await this.request(`/workflows/doc/templates/${encodeURIComponent(docType)}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      if (data?.template) {
+        this.templateName = data.template.name || this.templateName;
+        this.templateDescription = data.template.description || this.templateDescription;
+      }
+      await this.loadTemplateCatalog({ initial: true });
+      this.showToast(`Шаблон "${docType}" сохранен`);
+    });
+  }
+
+  // Выбирает шаг маршрута в редакторе.
+  selectEditorNode(nodeId) {
+    this.editorNodeId = nodeId;
+    this.ensureRouteDraftState();
+  }
+
+  // Обновляет базовые поля выбранного шага.
+  updateEditorNodeField(field, value) {
+    const node = this.selectedEditorNode;
+    if (!node) return;
+    node[field] = value;
+    if (field === 'id') {
+      this.editorNodeId = String(value || '').trim();
+    }
+    this.editorStepJson = JSON.stringify(node, null, 2);
+    this.requestUpdate();
+    this.ensureSelection();
+    this.drawGraph();
+  }
+
+  // Обновляет массивы after/members из CSV.
+  updateEditorNodeCsvField(field, value) {
+    const node = this.selectedEditorNode;
+    if (!node) return;
+    const items = String(value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (items.length === 0) {
+      delete node[field];
+    } else {
+      node[field] = items;
+    }
+    this.editorStepJson = JSON.stringify(node, null, 2);
+    this.requestUpdate();
+    this.drawGraph();
+  }
+
+  // Применяет full JSON выбранного шага.
+  applyEditorStepJson() {
+    const raw = String(this.editorStepJson || '').trim();
+    if (!raw) {
+      this.editorErrorText = 'JSON шага пустой';
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Шаг должен быть JSON-объектом');
+      }
+      if (!parsed.id || !String(parsed.id).trim()) {
+        throw new Error('Поле id обязательно');
+      }
+      const idx = this.editorNodes.findIndex((node) => node.id === this.editorNodeId);
+      if (idx === -1) return;
+      this.editorNodes[idx] = parsed;
+      this.editorNodeId = parsed.id;
+      this.editorErrorText = '';
+      this.ensureSelection();
+      this.requestUpdate();
+      this.drawGraph();
+    } catch (error) {
+      this.editorErrorText = error?.message || String(error);
+    }
+  }
+
+  // Добавляет новый шаг в маршрут.
+  addEditorNode() {
+    this.ensureRouteDraftState();
+    const baseId = `step.${this.editorNodes.length + 1}`;
+    let nodeId = baseId;
+    let counter = 1;
+    while (this.editorNodes.some((node) => node.id === nodeId)) {
+      counter += 1;
+      nodeId = `${baseId}.${counter}`;
+    }
+    const node = {
+      id: nodeId,
+      type: 'approval.kofn',
+      label: `Новый шаг ${this.editorNodes.length + 1}`,
+      members: ['Участник 1', 'Участник 2'],
+      k: 1,
+      required: true,
+      after: this.editorNodes.length ? [this.editorNodes[this.editorNodes.length - 1].id] : [],
+    };
+    this.routeDraft.nodes = [...this.editorNodes, node];
+    this.editorNodeId = node.id;
+    this.editorStepJson = JSON.stringify(node, null, 2);
+    this.requestUpdate();
+    this.ensureSelection();
+    this.drawGraph();
+  }
+
+  // Удаляет выбранный шаг из маршрута.
+  removeEditorNode() {
+    const targetId = this.editorNodeId;
+    if (!targetId) return;
+    const nextNodes = this.editorNodes.filter((node) => node.id !== targetId);
+    for (const node of nextNodes) {
+      if (!Array.isArray(node.after)) continue;
+      node.after = node.after.filter((dep) => dep !== targetId);
+    }
+    this.routeDraft.nodes = nextNodes;
+    this.editorNodeId = nextNodes[0]?.id || '';
+    this.editorStepJson = this.editorNodeId
+      ? JSON.stringify(nextNodes.find((node) => node.id === this.editorNodeId), null, 2)
+      : '';
+    this.requestUpdate();
+    this.ensureSelection();
+    this.drawGraph();
+  }
+
+  // Доступные варианты decision.
   get decisions() {
     return [
       { value: 'accept', label: 'Принять' },
+      { value: 'need_changes', label: 'Нужно доработать' },
       { value: 'decline', label: 'Отклонить' },
     ];
   }
 
-  // Для decline комментарий обязателен.
+  // Для негативных решений комментарий обязателен.
   get requiresComment() {
-    return this.decision === 'decline';
+    return this.decision === 'decline' || this.decision === 'need_changes';
   }
 
   // Демо-маршрут согласования кандидата (с child workflow и динамическим шагом).
@@ -782,10 +1496,39 @@ class DocWorkflowDemo extends LitElement {
           label: 'Регистрация кандидата',
           app: 'doc',
           action: 'candidate.intake',
+          pre: {
+            app: 'doc',
+            action: 'pre.policy.check',
+            payload: {
+              check: 'candidate_profile',
+              step: 'candidate.intake',
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
+              position: '{{doc.position}}',
+              grade: '{{doc.grade}}',
+              location: '{{doc.location}}',
+              documents: '{{doc.documents}}',
+            },
+          },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'candidate.history.snapshots',
+              stage: 'candidate.intake',
+              candidateId: '{{doc.candidateId}}',
+            },
+          },
           payload: {
             candidateName: '{{doc.title}}',
             salary: '{{doc.cost}}',
             candidateId: '{{doc.candidateId}}',
+            position: '{{doc.position}}',
+            grade: '{{doc.grade}}',
+            location: '{{doc.location}}',
+            employmentType: '{{doc.employmentType}}',
+            source: '{{doc.source}}',
+            documents: '{{doc.documents}}',
           },
         },
         {
@@ -804,6 +1547,16 @@ class DocWorkflowDemo extends LitElement {
               step: 'recruiter.approval',
               candidateName: '{{doc.title}}',
               salary: '{{doc.cost}}',
+            },
+          },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'candidate.history.snapshots',
+              stage: 'recruiter.approval',
+              candidateId: '{{doc.candidateId}}',
+              decision: '{{context.steps.recruiter.approval.result.outcome}}',
             },
           },
           gate: {
@@ -839,19 +1592,53 @@ class DocWorkflowDemo extends LitElement {
           setVars: {
             finance_child_workflow_id: '{{result.childWorkflowId}}',
           },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'candidate.history.snapshots',
+              stage: 'finance.group',
+              candidateId: '{{doc.candidateId}}',
+            },
+          },
         },
         {
           id: 'security.precheck',
           type: 'child.start',
-          label: 'Проверка безопасности (дочерний)',
+          label: 'Проверка СБ (дочерний процесс)',
           workflowType: 'candidateSecurityCheck',
           after: ['recruiter.approval'],
+          needChanges: {
+            defaultTarget: 'recruiter.approval',
+            allowedTargets: ['recruiter.approval'],
+          },
+          pre: {
+            app: 'doc',
+            action: 'pre.policy.check',
+            payload: {
+              check: 'security_precheck',
+              step: 'security.precheck',
+              candidateName: '{{doc.title}}',
+              salary: '{{doc.cost}}',
+              documents: '{{doc.documents}}',
+              requiredDocuments: '{{doc.securityRequiredDocuments}}',
+              riskTag: '{{doc.riskTag}}',
+            },
+            onPrecheckRejected: {
+              type: 'need_changes',
+              targetNodeId: 'recruiter.approval',
+              actor: 'Система precheck СБ',
+              comment:
+                'Автовозврат на рекрутеров: для передачи в СБ нужно минимум 2 документа (passport и consent).',
+            },
+          },
           input: {
             baseUrl: '{{context.docHandlers}}',
             docId: '{{doc.candidateId}}',
             payload: {
               candidateName: '{{doc.title}}',
               salary: '{{doc.cost}}',
+              documents: '{{doc.documents}}',
             },
           },
           setVars: {
@@ -866,6 +1653,19 @@ class DocWorkflowDemo extends LitElement {
           k: 1,
           required: true,
           after: ['security.precheck'],
+          needChanges: {
+            defaultTarget: 'security.precheck',
+            allowedTargets: ['security.precheck', 'recruiter.approval'],
+          },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'candidate.history.snapshots',
+              stage: 'security.approval',
+              candidateId: '{{doc.candidateId}}',
+            },
+          },
         },
         {
           id: 'director.approval',
@@ -875,6 +1675,19 @@ class DocWorkflowDemo extends LitElement {
           k: 1,
           required: true,
           after: ['finance.group', 'security.approval'],
+          needChanges: {
+            defaultTarget: 'security.approval',
+            disallowTargets: ['recruiter.approval'],
+          },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'candidate.history.snapshots',
+              stage: 'director.approval',
+              candidateId: '{{doc.candidateId}}',
+            },
+          },
         },
         {
           id: 'comp.committee',
@@ -889,6 +1702,28 @@ class DocWorkflowDemo extends LitElement {
             left: { path: 'doc.cost' },
             right: 150,
           },
+          needChanges: {
+            defaultTarget: 'director.approval',
+            disallowTargets: ['recruiter.approval'],
+          },
+          pre: {
+            app: 'doc',
+            action: 'pre.policy.check',
+            payload: {
+              check: 'compensation_committee',
+              step: 'comp.committee',
+              salary: '{{doc.cost}}',
+            },
+          },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'candidate.history.snapshots',
+              stage: 'comp.committee',
+              candidateId: '{{doc.candidateId}}',
+            },
+          },
         },
         {
           id: 'notify',
@@ -897,6 +1732,23 @@ class DocWorkflowDemo extends LitElement {
           app: 'doc',
           action: 'candidate.offer.publish',
           after: ['comp.committee'],
+          pre: {
+            app: 'doc',
+            action: 'pre.policy.check',
+            payload: {
+              check: 'publish_acl',
+              step: 'notify',
+            },
+          },
+          post: {
+            app: 'doc',
+            action: 'kafka.snapshot',
+            payload: {
+              topic: 'candidate.history.snapshots',
+              stage: 'notify',
+              candidateId: '{{doc.candidateId}}',
+            },
+          },
           payload: {
             candidateName: '{{doc.title}}',
             salary: '{{doc.cost}}',
@@ -911,6 +1763,9 @@ class DocWorkflowDemo extends LitElement {
     const route = this.output?.context?.route;
     if (route && Array.isArray(route.nodes) && route.nodes.length > 0) {
       return route;
+    }
+    if (this.routeDraft && Array.isArray(this.routeDraft.nodes) && this.routeDraft.nodes.length > 0) {
+      return this.routeDraft;
     }
     return this.route;
   }
@@ -933,6 +1788,13 @@ class DocWorkflowDemo extends LitElement {
     return (node.members || []).filter((member) => !approved.includes(member));
   }
 
+  // Кандидаты шага для возврата при need_changes с учетом policy-ограничений.
+  get needChangesTargetOptions() {
+    const node = this.selectedNode;
+    if (!node) return [];
+    return this.allowedNeedChangesTargets(node.id);
+  }
+
   // Быстрый map nodeId -> nodeConfig.
   get nodeById() {
     return new Map(this.activeRoute.nodes.map((node) => [node.id, node]));
@@ -952,6 +1814,55 @@ class DocWorkflowDemo extends LitElement {
   depsFor(nodeId) {
     const node = this.nodeById.get(nodeId);
     return node?.after || [];
+  }
+
+  // Собирает всех предков шага.
+  collectAncestors(nodeId, acc = new Set()) {
+    const deps = this.depsFor(nodeId);
+    for (const depId of deps) {
+      if (!depId || acc.has(depId)) continue;
+      acc.add(depId);
+      this.collectAncestors(depId, acc);
+    }
+    return acc;
+  }
+
+  // Стартовый автоматический шаг нельзя выбирать целью rewind по умолчанию.
+  isInitialAutomaticNode(nodeId) {
+    const node = this.nodeById.get(nodeId);
+    if (!node) return false;
+    return (node.after || []).length === 0 && node.type !== 'approval.kofn';
+  }
+
+  // Разрешенные цели need_changes для конкретного шага.
+  allowedNeedChangesTargets(nodeId) {
+    const node = this.nodeById.get(nodeId);
+    if (!node) return [];
+
+    let allowed = [...this.collectAncestors(nodeId)]
+      .map((id) => this.nodeById.get(id))
+      .filter(Boolean);
+
+    const allowInitial = node?.needChanges?.allowInitial === true;
+    if (!allowInitial) {
+      allowed = allowed.filter((item) => !this.isInitialAutomaticNode(item.id));
+    }
+
+    const policy = node?.needChanges || {};
+    if (Array.isArray(policy.allowedTargets) && policy.allowedTargets.length > 0) {
+      const only = new Set(policy.allowedTargets);
+      allowed = allowed.filter((item) => only.has(item.id));
+    }
+    if (Array.isArray(policy.disallowTargets) && policy.disallowTargets.length > 0) {
+      const deny = new Set(policy.disallowTargets);
+      allowed = allowed.filter((item) => !deny.has(item.id));
+    }
+
+    const byId = new Map();
+    for (const item of allowed) {
+      byId.set(item.id, item);
+    }
+    return [...byId.values()];
   }
 
   // Локальная проверка guard на основе текущей суммы cost.
@@ -1048,6 +1959,160 @@ class DocWorkflowDemo extends LitElement {
     return view;
   }
 
+  // Человекочитаемый label статуса шага для истории.
+  historyStepStatusLabel(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'done') return 'выполнен';
+    if (normalized === 'running') return 'выполняется';
+    if (normalized === 'skipped') return 'пропущен';
+    if (normalized === 'failed') return 'ошибка';
+    if (normalized === 'pending') return 'ожидает';
+    return normalized || 'неизвестно';
+  }
+
+  // Человекочитаемый label decision для истории.
+  historyDecisionLabel(decision) {
+    const normalized = String(decision || '').toLowerCase();
+    if (normalized === 'approve') return 'принято';
+    if (normalized === 'reject') return 'отклонено';
+    if (normalized === 'needs_changes') return 'нужна доработка';
+    return normalized || 'без решения';
+  }
+
+  // Текстовое представление последовательности действий процесса.
+  get historyForDisplay() {
+    const progress = this.output;
+    if (!progress) return [];
+
+    const events = [];
+    const pushEvent = (at, title, details = '') => {
+      if (!at) return;
+      events.push({ at, title, details });
+    };
+
+    pushEvent(progress.startedAt, 'Процесс запущен', progress.statusMessage || '');
+
+    const docHistory = Array.isArray(progress?.context?.documentHistory)
+      ? progress.context.documentHistory
+      : [];
+    for (const item of docHistory) {
+      const source = String(item?.source || 'update');
+      if (!item?.at) continue;
+      if (source === 'start') {
+        pushEvent(
+          item.at,
+          'Инициализация документа',
+          `Оклад: ${item?.document?.cost ?? 'n/a'}`
+        );
+      } else if (source === 'DOC_UPDATE') {
+        const docParts = [];
+        if (item?.patch && Object.prototype.hasOwnProperty.call(item.patch, 'cost')) {
+          docParts.push(`Оклад: ${item?.document?.cost ?? item?.patch?.cost ?? 'n/a'}`);
+        }
+        if (item?.patch && Object.prototype.hasOwnProperty.call(item.patch, 'documents')) {
+          const docs = this.documentsToInput(item?.document?.documents || item?.patch?.documents || []).join(', ');
+          docParts.push(`Документы: ${docs || 'нет'}`);
+        }
+        pushEvent(
+          item.at,
+          'Обновление документа',
+          docParts.join(' | ') || 'Изменения документа'
+        );
+      } else {
+        pushEvent(item.at, `Событие документа: ${source}`, '');
+      }
+    }
+
+    const needChangesHistory = Array.isArray(progress?.context?.needChangesHistory)
+      ? progress.context.needChangesHistory
+      : [];
+    for (const item of needChangesHistory) {
+      const fromLabel = item?.nodeLabel || item?.nodeId || 'неизвестный шаг';
+      const toLabel = item?.targetLabel || item?.targetNodeId || 'предыдущий шаг';
+      const note = item?.comment ? `Комментарий: ${item.comment}` : '';
+      pushEvent(
+        item?.at,
+        'Возврат на доработку',
+        `Из шага "${fromLabel}" на шаг "${toLabel}". ${note}`.trim()
+      );
+    }
+
+    const steps = progress?.context?.steps || {};
+    for (const [nodeId, step] of Object.entries(steps)) {
+      const label = this.nodeById.get(nodeId)?.label || nodeId;
+      if (step?.startedAt) {
+        pushEvent(step.startedAt, `Старт шага: ${label}`, '');
+      }
+      if (step?.approval?.updatedAt) {
+        const approvedCount =
+          step?.approval?.approvedCount ??
+          (Array.isArray(step?.approval?.approvedActors)
+            ? step.approval.approvedActors.length
+            : 0);
+        const required = step?.approval?.required ?? 'n/a';
+        const actor = step?.approval?.decisionActor
+          ? `Участник: ${step.approval.decisionActor}. `
+          : '';
+        const comment = step?.approval?.decisionComment
+          ? `Комментарий: ${step.approval.decisionComment}. `
+          : '';
+        pushEvent(
+          step.approval.updatedAt,
+          `Решение согласования: ${label}`,
+          `${actor}${comment}Решение: ${this.historyDecisionLabel(step.approval.decision)}. Голоса: ${approvedCount}/${required}.`
+        );
+      }
+      if (step?.completedAt) {
+        const outcome = step?.result?.outcome ? `, outcome: ${step.result.outcome}` : '';
+        pushEvent(
+          step.completedAt,
+          `Завершение шага: ${label}`,
+          `Статус: ${this.historyStepStatusLabel(step.status)}${outcome}`
+        );
+      }
+    }
+
+    if (progress?.abort?.at) {
+      pushEvent(progress.abort.at, 'Остановка процесса', progress.abort.message || '');
+    }
+    if (progress?.completedAt && String(progress?.status || '').toLowerCase() === 'completed') {
+      pushEvent(progress.completedAt, 'Процесс завершен', progress.statusMessage || '');
+    }
+
+    return events
+      .map((item, idx) => ({
+        ...item,
+        idx,
+        ts: Number.isFinite(Date.parse(item.at)) ? Date.parse(item.at) : Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => a.ts - b.ts || a.idx - b.idx)
+      .map(({ idx, ts, ...item }) => item);
+  }
+
+  // Рендер списка последовательных действий процесса.
+  renderHistoryView() {
+    const items = this.historyForDisplay;
+    if (!items.length) {
+      return html`<div class="hint">История пока пуста. Запустите процесс или обновите прогресс.</div>`;
+    }
+    return html`
+      <ol class="history-list">
+        ${items.map(
+          (item, index) => html`
+            <li class="history-item">
+              <div class="history-head">
+                <span class="history-index">${index + 1}</span>
+                <span class="history-title">${item.title}</span>
+                <span class="history-time">${this.formatDateTime(item.at)}</span>
+              </div>
+              ${item.details ? html`<div class="history-details">${item.details}</div>` : ''}
+            </li>
+          `
+        )}
+      </ol>
+    `;
+  }
+
   // Узел обязателен "прямо сейчас" (учитывая guard).
   isRequiredNow(node) {
     if (!node) return false;
@@ -1092,6 +2157,12 @@ class DocWorkflowDemo extends LitElement {
         this.actor = this.availableActors[0] || '';
       }
       this.nodeId = this.selectedNodeId;
+      if (!this.needChangesTargetOptions.some((item) => item.id === this.returnToNodeId)) {
+        this.returnToNodeId = '';
+      }
+      if (this.decision === 'need_changes' && this.needChangesTargetOptions.length === 0) {
+        this.decision = 'accept';
+      }
       return;
     }
 
@@ -1100,12 +2171,20 @@ class DocWorkflowDemo extends LitElement {
       this.selectedNodeId = next.id;
       this.nodeId = next.id;
       this.actor = this.availableActors[0] || '';
+      this.returnToNodeId = '';
+      if (this.decision === 'need_changes' && this.needChangesTargetOptions.length === 0) {
+        this.decision = 'accept';
+      }
       return;
     }
 
     this.selectedNodeId = this.approvalNodes[0]?.id || '';
     this.nodeId = this.selectedNodeId;
     this.actor = this.availableActors[0] || '';
+    this.returnToNodeId = '';
+    if (this.decision === 'need_changes' && this.needChangesTargetOptions.length === 0) {
+      this.decision = 'accept';
+    }
   }
 
   // Выбор узла кликом по карточке в графе (только если узел доступен).
@@ -1114,6 +2193,7 @@ class DocWorkflowDemo extends LitElement {
     this.selectedNodeId = nodeId;
     this.nodeId = nodeId;
     this.actor = this.availableActors[0] || '';
+    this.returnToNodeId = '';
   }
 
   // Унифицированный HTTP helper для API-запросов из UI.
@@ -1175,20 +2255,57 @@ class DocWorkflowDemo extends LitElement {
 
   // Выбирает первый доступный approval-узел в текущем маршруте.
   focusFirstSelectableApproval() {
+    const currentSelectable = this.selectedNodeId && this.isSelectable(this.selectedNodeId);
+    if (currentSelectable) {
+      if (!this.availableActors.includes(this.actor)) {
+        this.actor = this.availableActors[0] || '';
+      }
+      if (
+        this.decision === 'need_changes' &&
+        this.returnToNodeId &&
+        !this.needChangesTargetOptions.some((item) => item.id === this.returnToNodeId)
+      ) {
+        this.returnToNodeId = '';
+      }
+      return true;
+    }
+
     const next = this.approvalNodes.find((node) => this.isSelectable(node.id));
     if (!next) return false;
+    const nodeChanged = this.selectedNodeId !== next.id;
     this.selectedNodeId = next.id;
     this.nodeId = next.id;
-    this.actor = this.availableActors[0] || '';
+    if (!this.availableActors.includes(this.actor)) {
+      this.actor = this.availableActors[0] || '';
+    }
+    if (nodeChanged) {
+      this.returnToNodeId = '';
+    }
     return true;
   }
 
   // Ждет, пока выбранный шаг сменит статус после отправки сигнала.
-  async waitForNodeCompletion(workflowId, nodeId, { timeoutMs = 3400, intervalMs = 220 } = {}) {
+  async waitForNodeCompletion(
+    workflowId,
+    nodeId,
+    { timeoutMs = 3400, intervalMs = 220, decision = null, returnToNodeId = '' } = {}
+  ) {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
       await this.loadProgress(workflowId);
       const status = this.getStepState(nodeId)?.status;
+      if (decision === 'need_changes') {
+        const rewind = this.output?.context?.lastNeedChanges;
+        const targetNodeId = returnToNodeId || rewind?.targetNodeId || '';
+        const targetStatus = targetNodeId ? this.getStepState(targetNodeId)?.status : null;
+        if (
+          rewind?.nodeId === nodeId &&
+          status === 'pending' &&
+          (!targetNodeId || targetStatus === 'pending' || targetStatus === 'running')
+        ) {
+          return true;
+        }
+      }
       if (status === 'done' || status === 'skipped' || status === 'failed') {
         return true;
       }
@@ -1229,8 +2346,20 @@ class DocWorkflowDemo extends LitElement {
     if (normalized.includes('workflow not found')) {
       return 'Workflow не найден. Обновите список и выберите существующий запуск.';
     }
-    if (normalized.includes('comment is required for decline')) {
-      return 'Для решения "Отклонить" нужно указать комментарий с причиной.';
+    if (normalized.includes('comment is required for decline or need_changes')) {
+      return 'Для решений "Отклонить" и "Нужно доработать" нужен комментарий с причиной.';
+    }
+    if (normalized.includes('need_changes is not allowed for this step')) {
+      return 'Для выбранного шага возврат на доработку недоступен по правилам процесса.';
+    }
+    if (normalized.includes('reason is required for self-withdraw')) {
+      return 'Для самоотказа нужно указать причину.';
+    }
+    if (normalized.includes('invalid doctype')) {
+      return 'Некорректный тип документа. Используйте только латиницу, цифры, "_" и "-".';
+    }
+    if (normalized.includes('template for doctype')) {
+      return 'Шаблон для выбранного типа документа не найден.';
     }
     if (
       normalized.includes('failed to query workflow') ||
@@ -1290,6 +2419,16 @@ class DocWorkflowDemo extends LitElement {
         const nextCost = data?.context?.document?.cost ?? data?.doc?.cost;
         if (nextCost !== undefined) {
           this.cost = Number(nextCost);
+          if (!this.showStartModal || this.modalMode !== 'salary') {
+            this.updateCostValue = Number(nextCost);
+          }
+        }
+        const nextDocuments = data?.context?.document?.documents;
+        if (nextDocuments !== undefined && (!this.showStartModal || this.modalMode !== 'salary')) {
+          this.updateDocumentsText = this.documentsToInput(nextDocuments).join(', ');
+        }
+        if (!this.showStartModal) {
+          this.modalWorkflowId = id;
         }
         this.ensureSelection();
         this.drawGraph();
@@ -1310,10 +2449,25 @@ class DocWorkflowDemo extends LitElement {
   // Стартует новый document workflow из формы.
   async startWorkflow() {
     await this.run(async () => {
+      const startDocuments = this.parseDocumentsInput(this.startDocumentsText);
+      const documentPayload = {
+        title: this.title,
+        cost: Number(this.cost),
+        candidateId: this.docId,
+        position: 'Backend Engineer',
+        grade: 'Middle+',
+        department: 'Платформенная разработка',
+        location: 'Москва',
+        employmentType: 'штат',
+        source: 'HH.ru',
+        riskTag: 'low',
+        securityRequiredDocuments: ['passport', 'consent'],
+        documents: startDocuments,
+      };
       const payload = {
         docId: this.docId,
-        doc: { title: this.title, cost: Number(this.cost), candidateId: this.docId },
-        route: this.route,
+        docType: this.docType,
+        doc: documentPayload,
       };
       const data = await this.request('/workflows/doc/start', {
         method: 'POST',
@@ -1336,9 +2490,10 @@ class DocWorkflowDemo extends LitElement {
           status: 'running',
           statusMessage: 'Запуск процесса',
           context: {
-            route: this.route,
+            route: this.cloneJson(this.routeDraft || this.route),
+            docType: this.docType,
             steps: {},
-            document: { title: this.title, cost: Number(this.cost), candidateId: this.docId },
+            document: documentPayload,
             documentHistory: [],
           },
           startedAt: new Date().toISOString(),
@@ -1360,6 +2515,7 @@ class DocWorkflowDemo extends LitElement {
         this.showToast('Процесс запущен. Query временно недоступен, повторите "Обновить прогресс" через 1-2 секунды.');
       }
 
+      this.requestTransitionRefresh(9000);
       this.focusFirstSelectableApproval();
       await this.refreshWorkflowList({ silent: true });
     });
@@ -1368,23 +2524,59 @@ class DocWorkflowDemo extends LitElement {
   // Отправляет approval signal в выбранный workflow/узел.
   async sendApproval() {
     await this.run(async () => {
-      const workflowId = this.workflowId || `doc-${this.docId}`;
+      const workflowId = String(this.workflowId || '').trim();
+      if (!workflowId) {
+        throw new Error('Сначала выберите запущенный процесс слева');
+      }
       const nodeId = this.nodeId;
+      const decision = this.decision;
+      const returnToNodeId = this.returnToNodeId;
       await this.request(`/workflows/doc/${workflowId}/approval`, {
         method: 'POST',
         body: JSON.stringify({
           nodeId,
           actor: this.actor,
-          decision: this.decision,
+          decision,
           comment: this.comment,
+          returnToNodeId: decision === 'need_changes' ? returnToNodeId || undefined : undefined,
         }),
       });
       this.comment = '';
-      const settled = await this.waitForNodeCompletion(workflowId, nodeId);
+      const settled = await this.waitForNodeCompletion(workflowId, nodeId, {
+        decision,
+        returnToNodeId,
+      });
       if (!settled) {
         await this.loadProgress(workflowId);
       }
+      this.requestTransitionRefresh(9000);
       this.focusFirstSelectableApproval();
+      await this.refreshWorkflowList({ silent: true });
+    });
+  }
+
+  // Отправляет независимый сигнал самоотказа кандидата (терминальный).
+  async sendSelfWithdraw() {
+    await this.run(async () => {
+      const workflowId = String(this.workflowId || '').trim();
+      if (!workflowId) {
+        throw new Error('Сначала выберите запущенный процесс слева');
+      }
+      const actor =
+        this.output?.context?.document?.title ||
+        this.title ||
+        this.docId ||
+        'Кандидат';
+      await this.request(`/workflows/doc/${workflowId}/self-withdraw`, {
+        method: 'POST',
+        body: JSON.stringify({
+          actor,
+          reason: this.selfWithdrawReason,
+        }),
+      });
+      this.selfWithdrawReason = '';
+      await this.loadProgress(workflowId);
+      this.requestTransitionRefresh(5000);
       await this.refreshWorkflowList({ silent: true });
     });
   }
@@ -1392,6 +2584,9 @@ class DocWorkflowDemo extends LitElement {
   // Запрашивает текущий progress execution.
   async queryProgress() {
     await this.run(async () => {
+      if (!this.workflowId) {
+        throw new Error('Сначала выберите запущенный процесс слева');
+      }
       await this.loadProgress();
       this.focusFirstSelectableApproval();
       await this.refreshWorkflowList({ silent: true });
@@ -1410,6 +2605,7 @@ class DocWorkflowDemo extends LitElement {
         }),
       });
       await this.loadProgress(workflowId);
+      this.requestTransitionRefresh(7000);
       this.focusFirstSelectableApproval();
       await this.refreshWorkflowList({ silent: true });
     });
@@ -1428,6 +2624,12 @@ class DocWorkflowDemo extends LitElement {
     const normalized = String(status || 'unknown')
       .toLowerCase()
       .replace('workflow_execution_status_', '');
+    if (normalized === 'running') return 'в работе';
+    if (normalized === 'completed') return 'завершен';
+    if (normalized === 'rejected') return 'отклонен';
+    if (normalized === 'needs_changes') return 'нужны доработки';
+    if (normalized === 'withdrawn') return 'самоотказ';
+    if (normalized === 'failed') return 'ошибка';
     return normalized.replaceAll('_', ' ');
   }
 
@@ -1513,6 +2715,9 @@ class DocWorkflowDemo extends LitElement {
     const normalized = String(status || 'unknown').toLowerCase();
     if (normalized === 'done') return 'done';
     if (normalized === 'running') return 'running';
+    if (normalized === 'rejected') return 'rejected';
+    if (normalized === 'needs_changes') return 'needs_changes';
+    if (normalized === 'withdrawn') return 'rejected';
     if (normalized === 'failed') return 'failed';
     if (normalized === 'skipped') return 'skipped';
     if (normalized === 'pending') return 'pending';
@@ -1524,6 +2729,9 @@ class DocWorkflowDemo extends LitElement {
     const normalized = String(status || 'unknown').toLowerCase();
     if (normalized === 'done') return 'выполнено';
     if (normalized === 'running') return 'в работе';
+    if (normalized === 'rejected') return 'отклонен';
+    if (normalized === 'needs_changes') return 'нужны доработки';
+    if (normalized === 'withdrawn') return 'самоотказ';
     if (normalized === 'failed') return 'ошибка';
     if (normalized === 'skipped') return 'пропущено';
     if (normalized === 'pending') return 'ожидание';
@@ -1603,7 +2811,7 @@ class DocWorkflowDemo extends LitElement {
     const status = String(this.output?.status || '').toLowerCase();
     if (
       status === 'rejected' ||
-      status === 'needs_changes' ||
+      status === 'withdrawn' ||
       status === 'failed' ||
       status === 'terminated' ||
       status === 'canceled' ||
@@ -1620,8 +2828,8 @@ class DocWorkflowDemo extends LitElement {
       ).toLowerCase();
       return (
         outcome === 'rejected' ||
-        outcome === 'needs_changes' ||
         childStatus === 'rejected' ||
+        childStatus === 'withdrawn' ||
         childStatus === 'failed' ||
         childStatus === 'needs_changes' ||
         childStatus === 'terminated' ||
@@ -1635,6 +2843,11 @@ class DocWorkflowDemo extends LitElement {
   resolveNodeStatus(nodeId) {
     const nodeState = this.getStepState(nodeId);
     if (!nodeState) return 'idle';
+    const rewindReason = String(nodeState?.rewindReason || '').toLowerCase();
+    if (nodeState.status === 'pending') {
+      if (rewindReason === 'need_changes_source_waiting') return 'rewind_source';
+      if (rewindReason === 'need_changes_target_requested') return 'rewind_target';
+    }
     const outcome = nodeState?.result?.outcome;
     const childStatus = String(
       nodeState?.result?.childStatus || nodeState?.result?.result?.status || ''
@@ -1642,6 +2855,7 @@ class DocWorkflowDemo extends LitElement {
     if (
       childStatus === 'failed' ||
       childStatus === 'rejected' ||
+      childStatus === 'withdrawn' ||
       childStatus === 'needs_changes' ||
       childStatus === 'terminated' ||
       childStatus === 'timed_out' ||
@@ -1650,7 +2864,8 @@ class DocWorkflowDemo extends LitElement {
       return 'rejected';
     }
     if (childStatus === 'running') return 'running';
-    if (outcome === 'rejected' || outcome === 'needs_changes') return 'rejected';
+    if (outcome === 'rejected') return 'rejected';
+    if (outcome === 'needs_changes') return 'needs_changes';
     if (nodeState.status === 'failed') return 'rejected';
     if (nodeState.status === 'running') return 'running';
     if (nodeState.status === 'done') return 'done';
@@ -1664,10 +2879,13 @@ class DocWorkflowDemo extends LitElement {
     if (!code) return '';
     const map = {
       approval_decision: 'отрицательное решение согласующего',
+      self_withdrawal: 'кандидат самостоятельно отозвал заявку',
       gate_condition_failed: 'не пройдено gate-условие',
       step_failed: 'ошибка выполнения шага',
       child_process_failed: 'дочерний процесс завершился неуспешно',
       profile_incomplete: 'не заполнены обязательные поля профиля кандидата',
+      missing_required_docs_for_security:
+        'перед отправкой в СБ не загружены 2 обязательных документа (passport, consent)',
       salary_above_recruiter_limit: 'ожидаемый оклад выше лимита рекрутера',
       budget_not_feasible: 'финансовая модель не подтверждает бюджет',
       risk_too_high: 'риск по проверке безопасности слишком высокий',
@@ -1699,6 +2917,7 @@ class DocWorkflowDemo extends LitElement {
 
     const terminalFailed =
       status === 'rejected' ||
+      status === 'withdrawn' ||
       status === 'failed' ||
       status === 'needs_changes' ||
       status === 'terminated' ||
@@ -1736,7 +2955,12 @@ class DocWorkflowDemo extends LitElement {
     return {
       key: `${status}-${reasonCode || ''}-${failedNodeId || ''}-${message}`,
       tone: 'error',
-      title: status === 'failed' ? 'Причина остановки процесса' : 'Причина отклонения процесса',
+      title:
+        status === 'failed'
+          ? 'Причина остановки процесса'
+          : status === 'withdrawn'
+            ? 'Причина самоотказа'
+            : 'Причина отклонения процесса',
       message,
       nodeLabel: failedNodeLabel,
       reasonText,
@@ -1766,7 +2990,7 @@ class DocWorkflowDemo extends LitElement {
         <div class="reason-message">${info.message}</div>
         ${info.nodeLabel ? html`<div class="reason-meta">Шаг: ${info.nodeLabel}</div>` : ''}
         ${info.reasonText ? html`<div class="reason-meta">Код причины: ${info.reasonText}</div>` : ''}
-        ${info.actor ? html`<div class="reason-meta">Кто отклонил: ${info.actor}</div>` : ''}
+        ${info.actor ? html`<div class="reason-meta">Инициатор: ${info.actor}</div>` : ''}
         ${info.comment ? html`<div class="reason-meta">Комментарий: ${info.comment}</div>` : ''}
         ${info.technicalError ? html`<div class="reason-meta">Техническая деталь: ${info.technicalError}</div>` : ''}
       </div>
@@ -1779,7 +3003,10 @@ class DocWorkflowDemo extends LitElement {
       if (this.hasRejection()) return '#e45454';
       if (String(this.output?.status || '').toLowerCase() === 'completed') return '#2fca6a';
       const finalStatus = this.resolveNodeStatus(nodeId);
+      if (finalStatus === 'rewind_source') return '#d89c2f';
+      if (finalStatus === 'rewind_target') return '#4e7bff';
       if (finalStatus === 'running') return '#4e7bff';
+      if (finalStatus === 'needs_changes') return '#d8aa2f';
       const done = this.getStepState(nodeId)?.status === 'done';
       return done ? '#2fca6a' : '#c2c8d8';
     }
@@ -1787,6 +3014,9 @@ class DocWorkflowDemo extends LitElement {
     const status = this.resolveNodeStatus(nodeId);
     if (status === 'done') return '#2fca6a';
     if (status === 'rejected') return '#e45454';
+    if (status === 'rewind_source') return '#d89c2f';
+    if (status === 'rewind_target') return '#4e7bff';
+    if (status === 'needs_changes') return '#d8aa2f';
     if (status === 'running') return '#4e7bff';
     if (status === 'skipped') return '#8f9cb7';
     return '#c2c8d8';
@@ -1797,6 +3027,7 @@ class DocWorkflowDemo extends LitElement {
     const fromStatus = this.resolveNodeStatus(fromId);
     const toStatus = this.resolveNodeStatus(toId);
     if (fromStatus === 'rejected' || toStatus === 'rejected') return '#d64646';
+    if (fromStatus === 'needs_changes' || toStatus === 'needs_changes') return '#c79a2b';
     if (fromStatus === 'done' && (toStatus === 'done' || toStatus === 'running')) return '#3fbc6f';
     if (fromStatus === 'skipped') return '#8f9cb7';
     return '#8d97b7';
@@ -1804,7 +3035,8 @@ class DocWorkflowDemo extends LitElement {
 
   // Координаты карточек на вертикальном графе.
   layoutFor(nodeId) {
-    const order = this.activeRoute.nodes.map((node) => node.id);
+    const nodes = this.activeRoute.nodes || [];
+    const order = nodes.map((node) => node.id);
     const index = order.indexOf(nodeId);
     const cardW = 360;
     const cardH = 146;
@@ -1825,7 +3057,49 @@ class DocWorkflowDemo extends LitElement {
       'finance.child.finalize': { col: 1, row: 2 },
       notify: { col: 1, row: 6, terminal: true },
     };
-    const slot = map[nodeId] || { col: Math.max(0, index), row: 1, terminal: false };
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const hasChildren = new Set();
+    for (const node of nodes) {
+      for (const dep of node.after || []) {
+        hasChildren.add(dep);
+      }
+    }
+    const memoDepth = new Map();
+    const calcDepth = (id, seen = new Set()) => {
+      if (memoDepth.has(id)) return memoDepth.get(id);
+      if (seen.has(id)) return 0;
+      const nextSeen = new Set(seen);
+      nextSeen.add(id);
+      const node = byId.get(id);
+      const deps = Array.isArray(node?.after) ? node.after : [];
+      let depth = 0;
+      for (const dep of deps) {
+        depth = Math.max(depth, calcDepth(dep, nextSeen) + 1);
+      }
+      memoDepth.set(id, depth);
+      return depth;
+    };
+    const levels = new Map();
+    for (const id of order) {
+      const depth = calcDepth(id);
+      if (!levels.has(depth)) levels.set(depth, []);
+      levels.get(depth).push(id);
+    }
+    const dynamicMap = {};
+    const centerCol = 1;
+    for (const [depth, ids] of levels.entries()) {
+      const count = ids.length;
+      const offsetBase = -(count - 1) / 2;
+      ids.forEach((id, rowIndex) => {
+        const col = count === 1 ? centerCol : centerCol + offsetBase + rowIndex;
+        dynamicMap[id] = {
+          col,
+          row: depth,
+          terminal: !hasChildren.has(id),
+        };
+      });
+    }
+    const slot = map[nodeId] || dynamicMap[nodeId] || { col: Math.max(0, index), row: 0, terminal: false };
     const w = slot.terminal ? 212 : cardW;
     const h = slot.terminal ? 136 : cardH;
     const x = startX + slot.col * (cardW + colGap);
@@ -1878,6 +3152,9 @@ class DocWorkflowDemo extends LitElement {
       if (status === 'done') return 'выполнено';
       if (status === 'running') return 'в работе';
       if (status === 'rejected') return 'отклонено';
+      if (status === 'needs_changes') return 'доработка';
+      if (status === 'rewind_source') return 'ожидает доработку';
+      if (status === 'rewind_target') return 'доп. запрос';
       if (status === 'skipped') return 'пропущено';
       return 'ожидание';
     };
@@ -2021,9 +3298,10 @@ class DocWorkflowDemo extends LitElement {
     }
 
     const nodeGroup = viewport.append('g');
+    const lastNeedChanges = this.output?.context?.lastNeedChanges || null;
     for (const node of nodes) {
       const { x, y, w, h, terminal } = positions.get(node.id);
-      const isFinal = node.id === 'notify';
+      const isFinal = Boolean(terminal);
       const isApproval = node.type === 'approval.kofn';
       const isChildGroup = node.type === 'child.start';
       const childNodeState = this.getStepState(node.id);
@@ -2038,6 +3316,21 @@ class DocWorkflowDemo extends LitElement {
       const cardOpacity = isApproval && !selectable ? 0.78 : 1;
       const nodeStatus = this.resolveNodeStatus(node.id);
       const approvalInfo = this.getStepState(node.id)?.approval || null;
+      const isNeedChangesSource = nodeStatus === 'rewind_source';
+      const isNeedChangesTarget = nodeStatus === 'rewind_target';
+      const rewindBadgeVisible = isNeedChangesSource || isNeedChangesTarget;
+      const rewindTargetLabel =
+        lastNeedChanges?.targetLabel ||
+        this.nodeById.get(lastNeedChanges?.targetNodeId)?.label ||
+        lastNeedChanges?.targetNodeId ||
+        '';
+      const rewindBadgeRaw = isNeedChangesTarget
+        ? 'Доп. запрос (в работе)'
+        : rewindTargetLabel
+          ? `Ожидает: ${rewindTargetLabel}`
+          : 'Возврат на доработку';
+      const rewindBadgeText =
+        rewindBadgeRaw.length > 26 ? `${rewindBadgeRaw.slice(0, 24)}...` : rewindBadgeRaw;
       const gateStatus = this.getStepState(node.id)?.result?.gate?.status || 'WAIT';
       const gateReason = this.getStepState(node.id)?.result?.gate?.data?.gate?.reason || null;
       const tooltipLines = [
@@ -2053,6 +3346,7 @@ class DocWorkflowDemo extends LitElement {
         isApproval ? `Проголосовало: ${(approvalInfo?.approvedActors || []).length}/${node.k || 0}` : null,
         isApproval && node.gate ? `Контроль после голосования: ${gateStatus}` : null,
         isApproval && node.gate && gateReason ? `Причина: ${gateReason}` : null,
+        rewindBadgeVisible ? `Возвращено на доработку -> ${rewindTargetLabel || 'предыдущий шаг'}` : null,
         isChildGroup
           ? (canOpenChild ? 'Двойной клик: открыть дочерний процесс' : 'Дочерний процесс еще не готов к открытию')
           : null,
@@ -2262,6 +3556,34 @@ class DocWorkflowDemo extends LitElement {
         .style('pointer-events', 'none')
         .text(typeLabel);
 
+      if (rewindBadgeVisible) {
+        const rewindBadgeFill = isNeedChangesTarget ? '#e7f0ff' : '#fff4dc';
+        const rewindBadgeStroke = isNeedChangesTarget ? '#8eaee8' : '#e5c376';
+        const rewindBadgeColor = isNeedChangesTarget ? '#27457f' : '#7f5a13';
+        nodeGroup
+          .append('rect')
+          .attr('x', x + w - 210)
+          .attr('y', y + 50)
+          .attr('width', 196)
+          .attr('height', 20)
+          .attr('rx', 10)
+          .attr('fill', rewindBadgeFill)
+          .attr('stroke', rewindBadgeStroke)
+          .attr('stroke-width', 1.1)
+          .style('pointer-events', 'none');
+
+        nodeGroup
+          .append('text')
+          .attr('x', x + w - 112)
+          .attr('y', y + 64)
+          .attr('text-anchor', 'middle')
+          .attr('font-size', 10.5)
+          .attr('font-weight', 700)
+          .attr('fill', rewindBadgeColor)
+          .style('pointer-events', 'none')
+          .text(rewindBadgeText);
+      }
+
       const titleRaw = node.label || node.id;
       const titleText = titleRaw.length > 40 ? `${titleRaw.slice(0, 38)}...` : titleRaw;
       nodeGroup
@@ -2435,6 +3757,9 @@ class DocWorkflowDemo extends LitElement {
         <div class="legend">
           <span class="ok"><i></i>выполнено</span>
           <span class="err"><i></i>отклонено</span>
+          <span class="warn"><i></i>на доработке</span>
+          <span class="rewind-source"><i></i>шаг-источник ждет доработку</span>
+          <span class="rewind-target"><i></i>шаг-цель доп. запроса</span>
           <span class="skip"><i></i>пропущено/опционально</span>
           <span>колесо: зум | перетаскивание: панорама</span>
           <span>наведите на шаг: подсказка</span>
@@ -2445,7 +3770,12 @@ class DocWorkflowDemo extends LitElement {
             <div class="rule-item">sum < 150: комитет по компенсациям пропускается</div>
             <div class="rule-item">sum >= 150: комитет становится обязательным</div>
             <div class="rule-item">sum > 260: precheck рекрутера блокирует процесс</div>
+            <div class="rule-item">перед СБ нужно 2 документа: passport + consent</div>
+            <div class="rule-item">если документов меньше 2: авто-возврат на рекрутеров</div>
             <div class="rule-item">decline на обязательном шаге: процесс сразу отклоняется</div>
+            <div class="rule-item">need_changes: только в разрешенные шаги, назад к стартовому автошагу нельзя</div>
+            <div class="rule-item">из предфинала возврат к рекрутерам запрещен</div>
+            <div class="rule-item">самоотказ кандидата: отдельный сигнал, мгновенное завершение</div>
             <div class="rule-item">финансы и безопасность: идут параллельно</div>
             <div class="rule-item">следующий шаг активируется после завершения зависимостей</div>
             <div class="rule-item">двойной клик по узлу child: открыть дочерний процесс</div>
@@ -2461,6 +3791,178 @@ class DocWorkflowDemo extends LitElement {
     `;
   }
 
+  // Рендерит правую панель сигналов согласования/самоотказа.
+  renderSignalPanel(actorOptions, needChangesTargets, approvalAvailable, commentValid, needChangesEnabled) {
+    return html`
+      <section class="panel signal-panel">
+        <h2>Сигнал согласования</h2>
+        <div class="hint">
+          Процесс: ${this.workflowId || 'не выбран (выберите в списке слева)'}
+        </div>
+        <div class="hint">Шаг: ${this.selectedNode?.label || 'не выбран'} (выбор кликом по графу)</div>
+        <label>Участник</label>
+        <select .value=${this.actor} @change=${(e) => (this.actor = e.target.value)} ?disabled=${!approvalAvailable || actorOptions.length === 0}>
+          ${actorOptions.length === 0
+            ? html`<option value="">нет доступных участников</option>`
+            : actorOptions.map((member) => html`<option value=${member}>${member}</option>`)}
+        </select>
+        <label>Решение</label>
+        <div class="decision-row">
+          ${this.decisions.map(
+            (item) => html`
+              <button
+                class="decision-btn ${item.value} ${this.decision === item.value ? 'active' : ''}"
+                type="button"
+                ?disabled=${!approvalAvailable || (item.value === 'need_changes' && !needChangesEnabled)}
+                @click=${() => {
+                  this.decision = item.value;
+                  if (item.value === 'accept') {
+                    this.comment = '';
+                  }
+                  if (item.value !== 'need_changes') {
+                    this.returnToNodeId = '';
+                  }
+                }}
+              >
+                ${item.label}
+              </button>
+            `
+          )}
+        </div>
+        <label>Комментарий (обязателен при отклонении/доработке)</label>
+        <input
+          .value=${this.comment}
+          @input=${(e) => (this.comment = e.target.value)}
+          placeholder="укажите причину решения"
+          ?disabled=${!approvalAvailable || !this.requiresComment}
+        />
+        <label>Вернуть на шаг (опционально, только для "Нужно доработать")</label>
+        <select
+          .value=${this.returnToNodeId}
+          @change=${(e) => (this.returnToNodeId = e.target.value)}
+          ?disabled=${!approvalAvailable || this.decision !== 'need_changes'}
+        >
+          <option value="">предыдущий шаг (авто)</option>
+          ${needChangesTargets.map(
+            (step) => html`<option value=${step.id}>${step.label || step.id}</option>`
+          )}
+        </select>
+        <button ?disabled=${this.busy || !approvalAvailable || !this.actor || !this.workflowId || !commentValid} @click=${this.sendApproval}>
+          Отправить решение
+        </button>
+        <button class="secondary" ?disabled=${this.busy || !this.workflowId} @click=${this.queryProgress}>Обновить прогресс</button>
+        <label>Самоотказ (независимый сигнал)</label>
+        <div class="hint">Кандидат определяется автоматически из выбранного процесса.</div>
+        <input
+          .value=${this.selfWithdrawReason}
+          @input=${(e) => (this.selfWithdrawReason = e.target.value)}
+          placeholder="причина самоотказа (обязательно)"
+          ?disabled=${this.busy || !this.workflowId}
+        />
+        <button
+          class="secondary"
+          ?disabled=${this.busy || !this.workflowId || this.selfWithdrawReason.trim().length === 0}
+          @click=${this.sendSelfWithdraw}
+        >
+          Отправить самоотказ
+        </button>
+      </section>
+    `;
+  }
+
+  // Рендерит модальное окно запуска процесса/изменения оклада.
+  renderProcessModal() {
+    if (!this.showStartModal) return html``;
+    const canStart = !this.busy && this.docId.trim().length > 0 && this.title.trim().length > 0;
+    const canUpdateSalary =
+      !this.busy &&
+      this.modalWorkflowId.trim().length > 0 &&
+      Number.isFinite(Number(this.updateCostValue));
+    return html`
+      <div class="modal-backdrop" @click=${this.closeProcessModal}>
+        <section class="modal-card" @click=${(e) => e.stopPropagation()}>
+          <div class="modal-head">
+            <h3>Управление процессом</h3>
+            <button class="modal-close" type="button" @click=${this.closeProcessModal}>x</button>
+          </div>
+          <div class="modal-tabs">
+            <button
+              type="button"
+              class="modal-tab ${this.modalMode === 'start' ? 'active' : ''}"
+              @click=${() => (this.modalMode = 'start')}
+            >
+              Запуск процесса
+            </button>
+            <button
+              type="button"
+              class="modal-tab ${this.modalMode === 'salary' ? 'active' : ''}"
+              @click=${() => (this.modalMode = 'salary')}
+            >
+              Изменить данные
+            </button>
+          </div>
+
+          ${this.modalMode === 'start'
+            ? html`
+                <div class="modal-section">
+                  <label>Шаблон процесса (тип документа)</label>
+                  <div class="modal-inline">
+                    <select .value=${this.docType} @change=${this.onDocTypeChange}>
+                      ${this.templateItems.map(
+                        (item) => html`<option value=${item.docType}>${item.docType} (${item.nodeCount} шагов)</option>`
+                      )}
+                      ${!this.templateItems.some((item) => item.docType === this.docType)
+                        ? html`<option value=${this.docType}>${this.docType}</option>`
+                        : ''}
+                    </select>
+                    <button class="secondary" type="button" ?disabled=${this.busy} @click=${() => this.loadTemplateByType(this.docType)}>
+                      Загрузить
+                    </button>
+                  </div>
+                  <div class="hint">Редактирование шаблонов доступно на странице "Document Templates".</div>
+                  <label>id кандидата</label>
+                  <input .value=${this.docId} @input=${(e) => (this.docId = e.target.value)} />
+                  <label>ФИО кандидата</label>
+                  <input .value=${this.title} @input=${(e) => (this.title = e.target.value)} />
+                  <label>Оклад (условные единицы)</label>
+                  <input type="number" .value=${String(this.cost)} @input=${(e) => (this.cost = Number(e.target.value || 0))} />
+                  <label>Документы для СБ (через запятую)</label>
+                  <input
+                    .value=${this.startDocumentsText}
+                    @input=${(e) => (this.startDocumentsText = e.target.value)}
+                    placeholder="passport, consent"
+                  />
+                  <button ?disabled=${!canStart} @click=${this.startWorkflowFromModal}>Запустить согласование</button>
+                </div>
+              `
+            : html`
+                <div class="modal-section">
+                  <label>workflowId</label>
+                  <input
+                    .value=${this.modalWorkflowId}
+                    @input=${(e) => (this.modalWorkflowId = e.target.value)}
+                    placeholder="doc-..."
+                  />
+                  <label>Новый оклад</label>
+                  <input
+                    type="number"
+                    .value=${String(this.updateCostValue)}
+                    @input=${(e) => (this.updateCostValue = Number(e.target.value || 0))}
+                  />
+                  <label>Документы для СБ (через запятую)</label>
+                  <input
+                    .value=${this.updateDocumentsText}
+                    @input=${(e) => (this.updateDocumentsText = e.target.value)}
+                    placeholder="passport, consent"
+                  />
+                  <button class="secondary" ?disabled=${!canUpdateSalary} @click=${this.applySalaryFromModal}>Применить изменения</button>
+                </div>
+              `}
+        </section>
+      </div>
+    `;
+  }
+
   // Перерисовка графа при изменении ключевых reactive-полей.
   updated(changedProps) {
     if (changedProps.has('output') || changedProps.has('workflowId') || changedProps.has('cost') || changedProps.has('selectedNodeId')) {
@@ -2472,7 +3974,10 @@ class DocWorkflowDemo extends LitElement {
   // Основной шаблон страницы.
   render() {
     const actorOptions = this.availableActors;
-    const approvalAvailable = this.selectedNode && this.isSelectable(this.selectedNode.id);
+    const needChangesTargets = this.needChangesTargetOptions;
+    const needChangesEnabled = needChangesTargets.length > 0;
+    const hasActiveWorkflow = Boolean(this.workflowId);
+    const approvalAvailable = hasActiveWorkflow && this.selectedNode && this.isSelectable(this.selectedNode.id);
     const commentValid = !this.requiresComment || this.comment.trim().length > 0;
     const navPath = [...this.navigationStack, this.workflowId].filter(Boolean).join(' -> ');
 
@@ -2487,6 +3992,7 @@ class DocWorkflowDemo extends LitElement {
           </div>
           <nav>
             <a href="/ui">Home</a>
+            <a href="/ui/doc-templates">Document Templates</a>
             <a href="/ui/tickets">Service Desk</a>
             <a href="/ui/trip">Trip</a>
           </nav>
@@ -2496,7 +4002,11 @@ class DocWorkflowDemo extends LitElement {
           <div class="workspace-row">
             <section class="panel workflows-panel">
               <h2>Запущенные процессы</h2>
-              <button class="secondary" ?disabled=${this.busy} @click=${() => this.refreshWorkflowList()}>Обновить список</button>
+              <div class="actions-row">
+                <button class="secondary" ?disabled=${this.busy} @click=${() => this.refreshWorkflowList()}>Обновить список</button>
+                <button class="secondary" ?disabled=${this.busy} @click=${() => this.openProcessModal('start')}>Новый процесс</button>
+                <button class="secondary" ?disabled=${this.busy} @click=${() => this.openProcessModal('salary')}>Изменить данные</button>
+              </div>
               <div class="workflows-list">
                 ${this.workflowItems.length === 0
                   ? html`<div class="hint">В этой сессии пока нет запусков.</div>`
@@ -2578,82 +4088,39 @@ class DocWorkflowDemo extends LitElement {
                 </div>
                 ${this.renderGraph()}
               </section>
-
-              <div class="control-row">
-                <section class="panel">
-                  <h2>Запуск процесса</h2>
-                  <label>id кандидата</label>
-                  <input .value=${this.docId} @input=${(e) => (this.docId = e.target.value)} />
-                  <label>ФИО кандидата</label>
-                  <input .value=${this.title} @input=${(e) => (this.title = e.target.value)} />
-                  <div class="inline">
-                    <div>
-                      <label>Оклад (условные единицы)</label>
-                      <input type="number" .value=${String(this.cost)} @input=${(e) => (this.cost = Number(e.target.value || 0))} />
-                    </div>
-                    <div>
-                      <label>Изменить оклад</label>
-                      <button class="secondary" ?disabled=${this.busy || !this.workflowId} @click=${this.updateCost}>Применить</button>
-                    </div>
-                  </div>
-                  <button ?disabled=${this.busy} @click=${this.startWorkflow}>Запустить согласование</button>
-                  <button class="secondary" ?disabled=${this.busy || !this.workflowId} @click=${this.queryProgress}>Обновить прогресс</button>
-                </section>
-
-                <section class="panel">
-                  <h2>Сигнал согласования</h2>
-                  <label>workflowId</label>
-                  <input .value=${this.workflowId} @input=${(e) => (this.workflowId = e.target.value)} placeholder="doc-..." />
-                  <div class="hint">Выбранный шаг: ${this.selectedNode?.label || 'не выбран'} (выбор кликом по графу)</div>
-                  <label>Участник</label>
-                  <select .value=${this.actor} @change=${(e) => (this.actor = e.target.value)} ?disabled=${!approvalAvailable || actorOptions.length === 0}>
-                    ${actorOptions.length === 0
-                      ? html`<option value="">нет доступных участников</option>`
-                      : actorOptions.map((member) => html`<option value=${member}>${member}</option>`)}
-                  </select>
-                  <label>Решение</label>
-                  <div class="decision-row">
-                    ${this.decisions.map(
-                      (item) => html`
-                        <button
-                          class="decision-btn ${item.value} ${this.decision === item.value ? 'active' : ''}"
-                          type="button"
-                          ?disabled=${!approvalAvailable}
-                          @click=${() => {
-                            this.decision = item.value;
-                            if (item.value === 'accept') {
-                              this.comment = '';
-                            }
-                          }}
-                        >
-                          ${item.label}
-                        </button>
-                      `
-                    )}
-                  </div>
-                  <label>Комментарий (обязателен при отклонении)</label>
-                  <input
-                    .value=${this.comment}
-                    @input=${(e) => (this.comment = e.target.value)}
-                    placeholder="укажите причину отклонения"
-                    ?disabled=${!approvalAvailable || !this.requiresComment}
-                  />
-                  <button ?disabled=${this.busy || !approvalAvailable || !this.actor || !this.workflowId || !commentValid} @click=${this.sendApproval}>
-                    Отправить решение
-                  </button>
-                </section>
-              </div>
             </div>
 
-            <section class="panel result result-pane">
-              <h2>Результат</h2>
-              <div class="result-scroll">
-                ${this.renderFailureInfo()}
-                <pre>${JSON.stringify(this.outputForDisplay || { hint: 'Запустите процесс или обновите прогресс' }, null, 2)}</pre>
-              </div>
+            <section class="result-pane">
+              ${this.renderSignalPanel(actorOptions, needChangesTargets, approvalAvailable, commentValid, needChangesEnabled)}
+              <section class="panel result">
+                <h2>Результат</h2>
+                <div class="result-view-switch">
+                  <button
+                    type="button"
+                    class="view-btn ${this.resultView === 'json' ? 'active' : ''}"
+                    @click=${() => (this.resultView = 'json')}
+                  >
+                    JSON
+                  </button>
+                  <button
+                    type="button"
+                    class="view-btn ${this.resultView === 'history' ? 'active' : ''}"
+                    @click=${() => (this.resultView = 'history')}
+                  >
+                    История действий
+                  </button>
+                </div>
+                <div class="result-scroll">
+                  ${this.renderFailureInfo()}
+                  ${this.resultView === 'history'
+                    ? this.renderHistoryView()
+                    : html`<pre>${JSON.stringify(this.outputForDisplay || { hint: 'Запустите процесс или обновите прогресс' }, null, 2)}</pre>`}
+                </div>
+              </section>
             </section>
           </div>
         </section>
+        ${this.renderProcessModal()}
 
         <div class="status">
           ${this.errorText ? html`<div class="error">${this.errorText}</div>` : html`<div>Состояние: ${this.busy ? 'занято' : 'ожидание'}</div>`}
